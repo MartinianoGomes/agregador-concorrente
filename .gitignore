@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Distribuição / Build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Dados brutos da ANP e recortes gerados localmente
+data/anp_bruto.csv
+data/anp_bruto.zip
+data/anp_posto_*.csv
+
+# Resultados dos experimentos (cada um gera os seus)
+resultados/*.json
+resultados/*.csv
+resultados/*.png
+resultados/*.txt
+!resultados/.gitkeep
+
+# Credenciais (não devem ser commitadas)
+.env
+.env.local
+*.pem
+*.key
