@@ -55,18 +55,16 @@ def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
             if combustivel is None:
                 continue
 
-            cnpj = "".join(
-                caractere
-                for caractere in linha["CNPJ da Revenda"]
-                if caractere.isdigit()
-            )
+            cnpj = "".join(c for c in linha["CNPJ da Revenda"] if c.isdigit())
 
             try:
                 preco = float(linha["Valor de Venda"].replace(",", "."))
-                data = datetime.strptime(
-                     linha["Data da Coleta"], "%d/%m/%Y"
-                     ).date()
+                data = datetime.strptime(linha["Data da Coleta"], "%d/%m/%Y").date()
             except (ValueError, TypeError) as erro:
+                log.warning(
+                    "Registro ignorado na linha %d de %s: %s",
+                    leitor.line_num, csv_path.name, erro,
+                )
                 continue
 
             chave = (cnpj, cidade, combustivel)
