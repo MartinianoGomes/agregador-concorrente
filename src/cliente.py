@@ -1,5 +1,8 @@
 """Cliente CLI do Agregador de Combustíveis.
 
+A função `consultar()` é o único ponto de acesso ao agregador e também é usada
+pela interface gráfica (`interface_grafica.py`) e pelos experimentos.
+
 Interface interativa em linha de comando: pergunta estado, cidade, combustível
 e estratégia; envia a consulta ao agregador; imprime o ranking e o tempo total.
 

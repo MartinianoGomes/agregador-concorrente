@@ -21,5 +21,6 @@ start "Agregador" cmd /k python -m src.agregador --porta 5000 --rastreio ^
 echo.
 echo === Tudo no ar. Em outro cmd, rode:
 echo     python -m src.cliente --host localhost --porta 5000 --rastreio
+echo     python interface_grafica.py --porta 5000   (interface grafica)
 echo.
 echo === Feche as janelas abertas para encerrar.

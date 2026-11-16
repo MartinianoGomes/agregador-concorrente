@@ -1,60 +1,49 @@
 """Interface desktop para o agregador TCP de combustíveis.
 
-Com os servidores TCP ativos, execute em outro terminal:
-    AGREGADOR_PORTA=15000 python interface_grafica.py   # macOS, porta 5000 ocupada
-    python interface_grafica.py                        # padrão: porta 5000
+Com os servidores TCP ativos (scripts/run_all.sh ou scripts/apresentar.sh),
+execute em outro terminal:
+    python interface_grafica.py                        # agregador na porta 5000
+    python interface_grafica.py --porta 15000          # ex.: macOS, porta 5000 ocupada
+    AGREGADOR_PORTA=15000 python interface_grafica.py  # idem, por variável de ambiente
+    python interface_grafica.py --rastreio             # mostra as mensagens no terminal
 
-A consulta de preços sempre usa src.cliente.consultar (socket TCP).
-Os CSVs locais são lidos somente para preencher o seletor de municípios.
+A consulta de preços sempre usa src.cliente.consultar (socket TCP), enviando o
+estado (UF) e o município escolhidos no seletor. Os CSVs locais são lidos
+somente para preencher o seletor de municípios. Requer o Tkinter (no Linux,
+pacote python3-tk).
 """
 
 from __future__ import annotations
 
-import csv
+import argparse
 import os
 import queue
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
 from pathlib import Path
+from tkinter import messagebox, ttk
 
+from src import municipios as mun
+from src import protocolo as p
 from src.cliente import consultar
 from src.protocolo import COMBUSTIVEIS, ESTRATEGIA_CONCORRENTE, ESTRATEGIA_SEQUENCIAL
 
+PASTA_DADOS = Path(__file__).resolve().parent / "data"
 HOST_AGREGADOR = "127.0.0.1"
-# Configure no macOS com: AGREGADOR_PORTA=15000 python interface_grafica.py
 PORTA_AGREGADOR = int(os.environ.get("AGREGADOR_PORTA", "5000"))
 
 
-def carregar_municipios() -> list[str]:
-    """Lê nomes e UFs dos recortes da ANP para o seletor, sem consultar preços."""
-    pasta = Path(__file__).resolve().parent / "data"
-    municipios: set[str] = set()
-    for arquivo in sorted(pasta.glob("anp_posto_*.csv")):
-        with arquivo.open(encoding="utf-8", newline="") as dados:
-            for registro in csv.DictReader(dados, delimiter=";"):
-                nome = registro.get("Municipio", "").strip()
-                uf = registro.get("Estado - Sigla", "").strip().upper()
-                if nome and uf:
-                    municipios.add(f"{nome} - {uf}")
-    return sorted(municipios, key=lambda nome: nome.casefold())
-
-
-def cidade_para_consulta(municipio_selecionado: str) -> str:
-    """Remove a UF visual; o protocolo TCP atual recebe somente a cidade."""
-    return municipio_selecionado.rsplit(" - ", 1)[0].strip()
-
-
 class InterfaceAgregador(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, host: str = HOST_AGREGADOR, porta: int = PORTA_AGREGADOR) -> None:
         super().__init__()
+        self.host, self.porta = host, porta
         self.title("Agregador de combustíveis | Região Norte")
         self.geometry("900x750")
         self.minsize(750, 640)
         self.configure(bg="#F3F6F9")
 
-        self.cidade = tk.StringVar(value="Belém - PA")
-        self.municipios = carregar_municipios()
+        self.cidade = tk.StringVar(value="BELEM - PA")
+        self.municipios = mun.carregar_municipios(PASTA_DADOS)
         self.combustivel = tk.StringVar(value="gasolina_comum")
         self.estrategia = tk.StringVar(value=ESTRATEGIA_CONCORRENTE)
         self.status = tk.StringVar(value="Pronto para consultar o agregador TCP.")
@@ -80,7 +69,7 @@ class InterfaceAgregador(tk.Tk):
         cabecalho.pack(fill="x")
         tk.Label(cabecalho, text="Agregador de preços de combustíveis", fg="white",
                  bg="#173B60", font=("Arial", 19, "bold")).pack(anchor="w")
-        tk.Label(cabecalho, text="Região Norte · Dados históricos ANP · Comunicação TCP",
+        tk.Label(cabecalho, text=f"Região Norte · Dados históricos ANP · Agregador TCP em {self.host}:{self.porta}",
                  fg="#D8E8F6", bg="#173B60", font=("Arial", 11)).pack(anchor="w", pady=(6, 0))
 
         painel = ttk.Frame(self, style="Form.TFrame", padding=18)
@@ -88,7 +77,7 @@ class InterfaceAgregador(tk.Tk):
         painel.columnconfigure(0, weight=2)
         painel.columnconfigure(1, weight=2)
 
-        ttk.Label(painel, text="Município").grid(row=0, column=0, sticky="w")
+        ttk.Label(painel, text="Município - UF").grid(row=0, column=0, sticky="w")
         ttk.Label(painel, text="Combustível").grid(row=0, column=1, sticky="w", padx=(15, 0))
         self.campo_municipio = ttk.Combobox(
             painel, textvariable=self.cidade, values=self.municipios,
@@ -152,21 +141,27 @@ class InterfaceAgregador(tk.Tk):
         """Permite digitar parte do nome sem perder o dropdown de municípios."""
         if evento.keysym in {"Up", "Down", "Return", "Escape", "Tab"}:
             return
-        texto = self.cidade.get().strip().casefold()
-        self.campo_municipio["values"] = [
-            nome for nome in self.municipios if texto in nome.casefold()
-        ] if texto else self.municipios
+        # ignora acentos e maiúsculas: "belém" encontra "BELEM - PA"
+        self.campo_municipio["values"] = mun.filtrar(self.cidade.get(), self.municipios)
 
     def _iniciar_consulta(self) -> None:
-        cidade = self.cidade.get().strip()
-        if not cidade:
+        texto = self.cidade.get().strip()
+        if not texto:
             messagebox.showwarning("Município obrigatório", "Selecione ou informe um município.")
             return
-        if self.municipios and cidade.casefold() not in {nome.casefold() for nome in self.municipios}:
-            messagebox.showwarning(
-                "Município não encontrado",
-                "Selecione um município da lista de dados históricos disponíveis.",
-            )
+        if self.municipios:
+            encontrado = mun.localizar(texto, self.municipios)
+            if encontrado is None:
+                messagebox.showwarning(
+                    "Município não encontrado",
+                    "Selecione um município da lista de dados históricos disponíveis.",
+                )
+                return
+            texto = encontrado
+        try:
+            estado, cidade = mun.separar_municipio(texto)
+        except ValueError as erro:
+            messagebox.showwarning("Município inválido", str(erro).capitalize() + ".")
             return
         if self.consulta_ativa:
             return
@@ -178,12 +173,13 @@ class InterfaceAgregador(tk.Tk):
         for item in self.tabela.get_children():
             self.tabela.delete(item)
         threading.Thread(target=self._consultar_em_segundo_plano,
-                         args=(cidade_para_consulta(cidade), self.combustivel.get(), self.estrategia.get()),
+                         args=(estado, cidade, self.combustivel.get(), self.estrategia.get()),
                          daemon=True).start()
 
-    def _consultar_em_segundo_plano(self, cidade: str, combustivel: str, estrategia: str) -> None:
+    def _consultar_em_segundo_plano(self, estado: str, cidade: str, combustivel: str,
+                                    estrategia: str) -> None:
         try:
-            resposta = consultar(HOST_AGREGADOR, PORTA_AGREGADOR, cidade, combustivel, estrategia)
+            resposta = consultar(self.host, self.porta, estado, cidade, combustivel, estrategia)
             self.respostas.put(("sucesso", resposta))
         except (OSError, ValueError, KeyError, TypeError) as erro:
             self.respostas.put(("erro", str(erro)))
@@ -198,7 +194,7 @@ class InterfaceAgregador(tk.Tk):
                     self._mostrar_resultado(dados)
                 else:
                     self.status.set(f"Falha na consulta: {dados}")
-                    messagebox.showerror("Erro de comunicação", f"Não foi possível consultar o agregador.\n\n{dados}\n\nVerifique se o agregador TCP está ativo na porta {PORTA_AGREGADOR}.")
+                    messagebox.showerror("Erro de comunicação", f"Não foi possível consultar o agregador.\n\n{dados}\n\nVerifique se o agregador TCP está ativo em {self.host}:{self.porta}.")
         except queue.Empty:
             pass
         self.after(100, self._verificar_respostas)
@@ -223,9 +219,23 @@ class InterfaceAgregador(tk.Tk):
                                                    item.get("status", "sem resposta")), tags=("falha",))
         n = len(resposta.get("resultados", []))
         falhas = len(resposta.get("indisponiveis", []))
-        self.status.set(f"Consulta finalizada: {n} posto(s) no ranking; {falhas} sem resposta. "
+        self.status.set(f"Consulta finalizada: {n} posto(s) no ranking; {falhas} sem resposta "
+                        f"[id {resposta.get('id', '-')}]. "
                         "Valores históricos da ANP, não preços em tempo real.")
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Interface gráfica do agregador de combustíveis.")
+    parser.add_argument("--host", default=HOST_AGREGADOR)
+    parser.add_argument("--porta", type=int, default=PORTA_AGREGADOR,
+                        help="porta do agregador (padrão: $AGREGADOR_PORTA ou 5000)")
+    parser.add_argument("--rastreio", action="store_true",
+                        help="mostra no terminal cada mensagem enviada e recebida")
+    args = parser.parse_args()
+    if args.rastreio:
+        p.configurar_rastreio("interface")
+    InterfaceAgregador(args.host, args.porta).mainloop()
+
+
 if __name__ == "__main__":
-    InterfaceAgregador().mainloop()
+    main()

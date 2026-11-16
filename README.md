@@ -2,7 +2,7 @@
 
 Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gleison de Oliveira Medeiros. Grupo III — Tema 3.
 
-> Aplicação cliente-servidor em Python que consulta, por sockets TCP, preços de combustíveis em quatro postos independentes (redes de abastecimento da Região Norte), nos modos **sequencial** e **concorrente** (threads). Os preços vêm de um recorte da série histórica semanal da ANP.
+> Aplicação cliente-servidor em Python que consulta, por sockets TCP, preços de combustíveis em quatro postos independentes (redes de abastecimento da Região Norte), nos modos **sequencial** e **concorrente** (threads). O usuário informa o estado (UF), o município, o combustível e a estratégia, por linha de comando ou por interface gráfica. Os preços vêm de um recorte da série histórica semanal da ANP.
 
 ## Integrantes
 
@@ -27,11 +27,14 @@ Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gle
 │   ├── protocolo.py        # Constantes e helpers do protocolo JSON
 │   ├── posto.py            # Servidor TCP de um posto (4 instâncias em portas 6001-6004)
 │   ├── agregador.py        # Servidor agregador (porta 5000)
-│   └── cliente.py          # Cliente CLI
+│   ├── cliente.py          # Cliente de linha de comando (e função consultar(), usada por todos)
+│   └── municipios.py       # Lista de municípios "CIDADE - UF" para a interface gráfica
+├── interface_grafica.py    # Cliente com interface gráfica (Tkinter)
 ├── scripts/
 │   ├── preparar_csvs.py    # Divide o CSV da ANP (baixado à mão) em 4 recortes, um por rede
-│   ├── run_all.sh          # Sobe postos + agregador em uma só execução (Linux/Mac)
-│   └── run_all.bat         # Idem para Windows
+│   ├── run_all.sh          # Sobe postos + agregador (porta 5000) com rastreio (Linux/macOS)
+│   ├── run_all.bat         # Idem para Windows
+│   └── apresentar.sh       # Sobe postos + agregador na porta 15000 para a interface gráfica
 ├── data/                   # CSVs da ANP (gitignored, exceto o README)
 ├── experimentos/           # 5 experimentos obrigatórios + gráficos
 │   ├── _comum.py           # Sobe/derruba postos e agregador, estatísticas, gráficos
@@ -48,6 +51,7 @@ Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gle
 
 - Python 3.10 ou superior
 - pip (a aplicação só usa a biblioteca padrão; `matplotlib` ≥ 3.9 é necessário para os gráficos e `pytest` para os testes)
+- Tkinter, só para a interface gráfica. Já vem com o Python no Windows e no macOS (instalador do python.org). No Linux, instale o pacote do sistema: `sudo apt install python3-tk` (Debian/Ubuntu) ou `sudo dnf install python3-tkinter` (Fedora)
 - Sistema operacional: Linux, macOS ou Windows
 
 ## Instalação
@@ -87,13 +91,27 @@ O script gera `data/anp_posto_a.csv`, `data/anp_posto_b.csv`, `data/anp_posto_c.
 scripts\run_all.bat
 ```
 
-Os scripts sobem os 4 postos (portas 6001–6004) e o agregador (porta 5000) em processos separados. Para parar tudo, Ctrl+C.
+Os scripts sobem os 4 postos (portas 6001–6004) e o agregador (porta 5000) em processos separados. Para parar tudo, Ctrl+C. Para usar outra porta no agregador, defina `AGREGADOR_PORTA` (ex.: `AGREGADOR_PORTA=15000 ./scripts/run_all.sh`).
 
-**Em outro terminal**, inicie o cliente:
+**Em outro terminal**, inicie um dos clientes. Os dois consultam o agregador pelo mesmo protocolo TCP.
+
+Cliente de linha de comando:
 
 ```bash
 python -m src.cliente --host localhost --porta 5000
 ```
+
+Interface gráfica:
+
+```bash
+python interface_grafica.py                  # agregador na porta 5000
+python interface_grafica.py --porta 15000    # outra porta (ou AGREGADOR_PORTA=15000)
+python interface_grafica.py --rastreio       # mostra as mensagens no terminal
+```
+
+Na interface, escolha o município no formato `CIDADE - UF` (ex.: `BELEM - PA`). Dá para digitar parte do nome, com ou sem acento, para filtrar a lista, que vem dos CSVs em `data/`. A tela mostra o ranking, o menor preço, o tempo medido pelo agregador e o `id` da consulta.
+
+**Demonstração (macOS):** no macOS a porta 5000 costuma estar ocupada pelo sistema (AirPlay). O `scripts/apresentar.sh` sobe os servidores com o agregador na porta 15000 e confere antes se as portas estão livres (precisa do `lsof`). Depois, em outro terminal: `python interface_grafica.py --porta 15000`.
 
 Os scripts já sobem tudo com `--rastreio`: cada processo mostra, em stderr, cada mensagem que envia e recebe, com horário em ms, thread, endereço do outro lado, `id` da consulta, tamanho e o JSON completo. Para seguir uma consulta pelos processos, procure pelo `id` exibido no cliente (ex.: `[id 81e284c6]`). Detalhes em [`PROTOCOLO.md`](PROTOCOLO.md#rastreamento-id).
 

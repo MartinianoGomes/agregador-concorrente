@@ -5,6 +5,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+PORTA="${AGREGADOR_PORTA:-5000}"
 
 PIDS=()
 
@@ -30,8 +31,8 @@ PIDS+=($!)
 
 sleep 1
 
-echo ">>> Subindo agregador na porta 5000..."
-python -m src.agregador --porta 5000 --rastreio \
+echo ">>> Subindo agregador na porta $PORTA..."
+python -m src.agregador --porta "$PORTA" --rastreio \
   --posto A:127.0.0.1:6001 \
   --posto B:127.0.0.1:6002 \
   --posto C:127.0.0.1:6003 \
@@ -40,7 +41,8 @@ PIDS+=($!)
 
 echo
 echo ">>> Tudo no ar. Em outro terminal, rode:"
-echo "    python -m src.cliente --host localhost --porta 5000 --rastreio"
+echo "    python -m src.cliente --host localhost --porta $PORTA --rastreio"
+echo "    python interface_grafica.py --porta $PORTA          (interface gráfica)"
 echo
 echo ">>> Ctrl+C para encerrar."
 wait

@@ -16,7 +16,7 @@ Todas as mensagens aceitam o campo opcional `id` (texto, 1 a 64 caracteres), usa
 - o **agregador** repassa o mesmo `id` a todos os postos e o devolve na resposta ao cliente (se o cliente não mandar, o agregador cria um);
 - cada **posto** devolve o `id` que recebeu.
 
-Com a opção `--rastreio` (cliente, agregador e postos), cada processo escreve em stderr uma linha por mensagem enviada ou recebida:
+Com a opção `--rastreio` (cliente de linha de comando, interface gráfica, agregador e postos), cada processo escreve em stderr uma linha por mensagem enviada ou recebida:
 
 ```
 11:48:31.997 [agregador | consulta-posto_0] → ENVIA para posto A (127.0.0.1:6001) | id=81e284c6 | 105 bytes | {"operacao": "consultar", ...}

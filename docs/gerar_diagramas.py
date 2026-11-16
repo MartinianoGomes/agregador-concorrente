@@ -222,11 +222,16 @@ def componentes() -> None:
         seta(ax, pontos, ponta="aberta", tracejada=True, cor=SUAVE)
         texto(ax, pos[0], pos[1], rotulo, tam=10, cor=SUAVE, ha=ha, va=va, fundo=fundo)
 
-    # Experimentos e Cliente
+    # Experimentos e Clientes (linha de comando e interface gráfica)
     componente(0.4, 9.6, 4.3, 1.9, "Experimentos", "experimentos/ (exp. 1 a 5)", cor=ROXO,
                fc=ROXO_CLARO)
-    componente(0.4, 5.2, 4.3, 2.75, "Cliente CLI",
-               "src/cliente.py\npede UF, município,\ncombustível e estratégia")
+    cx, cy, cw, ch = 0.4, 4.55, 4.3, 4.5
+    componente(cx, cy, cw, ch, "Clientes", nome_no_topo=True)
+    for y, nome, desc in ((6.4, "Linha de comando", "src/cliente.py"),
+                          (4.85, "Interface gráfica", "interface_grafica.py")):
+        retangulo(ax, cx + 0.35, y, cw - 0.7, 1.3, fc="white", ec=AZUL, lw=1.2, z=3)
+        texto(ax, cx + cw / 2, y + 0.85, nome, tam=11, negrito=True)
+        texto(ax, cx + cw / 2, y + 0.4, desc, tam=10)
 
     # Agregador e suas partes internas
     ax0, ay0, aw, ah = 7.1, 4.5, 5.1, 7.0
@@ -258,12 +263,13 @@ def componentes() -> None:
                tipo="library", cor=BORDA, fc=CINZA_CLARO)
 
     # Dependências
-    dependencia([(2.55, 9.6), (2.55, 7.8)], "«use»", (2.55, 8.7))
+    dependencia([(2.55, 9.6), (2.55, cy + ch)], "«use»  consultar()", (2.75, 9.32), ha="left",
+                fundo=None)
     dependencia([(4.7, 10.3), (ax0, 10.3)], "«create»\ninicia os processos", (5.9, 10.45),
                 va="bottom", fundo=None)
     dependencia([(ax0 + aw / 2, ay0), (ax0 + aw / 2, 3.7)], "«use»", (ax0 + aw / 2 + 0.2, 4.1),
                 ha="left", fundo=None)
-    dependencia([(2.55, 5.4), (2.55, 2.75), (ax0, 2.75)], "«use»", (2.55, 4.1))
+    dependencia([(2.55, cy), (2.55, 2.75), (ax0, 2.75)], "«use»", (2.55, 3.65))
     dependencia([(px + 0.8, py - 0.36), (px + 0.8, 2.75), (ax0 + aw, 2.75)], "«use»", (px + 0.8, 4.1))
 
     # Dados
@@ -328,10 +334,12 @@ def sequencia() -> None:
 
     # Cabeçalhos
     y_cab = TOPO - 0.3
+    rotulos = {"Cliente": "Cliente\n(CLI ou interface)"}
     for nome, x in X.items():
         cor, fc = (VERDE, VERDE_CLARO) if nome.startswith("Posto") else (AZUL, AZUL_CLARO)
         retangulo(ax, x - 1.45, y_cab - 0.9, 2.9, 0.9, fc=fc, ec=cor, lw=1.6, z=6)
-        texto(ax, x, y_cab - 0.45, nome, tam=12, negrito=True, z=7)
+        texto(ax, x, y_cab - 0.45, rotulos.get(nome, nome), tam=12 if nome not in rotulos else 11,
+              negrito=True, z=7)
 
     y = y_cab - 0.9 - 1.3
     msg("Usuário", "Cliente", y, "estado, município,\ncombustível, estratégia")
