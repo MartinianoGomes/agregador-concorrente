@@ -17,11 +17,12 @@ usado no Experimento 3 (comparação sequencial × concorrente com latência).
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
-import random
 import socket
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from src import protocolo as p
@@ -31,35 +32,60 @@ log = logging.getLogger("posto")
 
 # ---------- Carregamento da base ----------
 def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
-    """Lê o CSV da ANP e devolve um dicionário {(cidade_norm, combustível): preço}.
+    """Carrega os preços mais recentes de cada estabelecimento."""
 
-    TODO (Gustavo): implementar a leitura real do CSV da ANP.
-      - Formato do CSV: ver metadados em
-        https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis
-      - Colunas esperadas: Municipio, Produto, Valor_de_Venda (ou equivalentes).
-      - Mapear os valores de `Produto` para os identificadores do protocolo
-        (gasolina_comum, gasolina_aditivada, etanol, diesel_s10).
-      - Se houver várias linhas para a mesma (cidade, produto), usar o preço
-        médio (ou mínimo — definir com o grupo).
+    mapa_combustiveis = {
+        "GASOLINA": "gasolina_comum",
+        "GASOLINA ADITIVADA": "gasolina_aditivada",
+        "ETANOL": "etanol",
+        "DIESEL S10": "diesel_s10",
+    }
 
-    Enquanto o CSV real não está em mãos, esta versão devolve uma base
-    sintética para que o agregador e o cliente possam ser desenvolvidos
-    em paralelo.
-    """
-    if csv_path.exists():
-        log.warning("Carregamento do CSV ainda não implementado — usando base sintética.")
-    else:
-        log.warning("CSV %s não encontrado — usando base sintética.", csv_path)
+    # Última coleta de cada estabelecimento, cidade e combustível.
+    ultimas_coletas = {}
 
-    # Base sintética: algumas cidades da Região Norte com preços fictícios.
-    cidades_norte = ["belem", "manaus", "porto velho", "macapa", "rio branco", "palmas", "boa vista", "santarem"]
+    with csv_path.open(encoding="utf-8", newline="") as arquivo:
+        leitor = csv.DictReader(arquivo, delimiter=";")
+
+        for linha in leitor:
+            cidade = p.normalizar_cidade(linha["Municipio"])
+            produto = linha["Produto"].strip().upper()
+            combustivel = mapa_combustiveis.get(produto)
+
+            if combustivel is None:
+                continue
+
+            cnpj = "".join(c for c in linha["CNPJ da Revenda"] if c.isdigit())
+
+            try:
+                preco = float(linha["Valor de Venda"].replace(",", "."))
+                data = datetime.strptime(linha["Data da Coleta"], "%d/%m/%Y").date()
+            except (ValueError, TypeError) as erro:
+                log.warning(
+                    "Registro ignorado na linha %d de %s: %s",
+                    leitor.line_num, csv_path.name, erro,
+                )
+                continue
+
+            chave = (cnpj, cidade, combustivel)
+
+            if chave not in ultimas_coletas:
+                ultimas_coletas[chave] = (data, preco)
+            else:
+                data_anterior, _ = ultimas_coletas[chave]
+
+                if data > data_anterior:
+                    ultimas_coletas[chave] = (data, preco)
+
+    # Menor preço entre as últimas coletas dos estabelecimentos.
     base: dict[tuple[str, str], float] = {}
-    rng = random.Random(csv_path.name)  # determinístico pelo nome do arquivo
-    for cidade in cidades_norte:
-        # cada posto cobre um subconjunto aleatório das cidades
-        if rng.random() < 0.7:
-            for combustivel in p.COMBUSTIVEIS:
-                base[(cidade, combustivel)] = round(rng.uniform(4.0, 7.5), 2)
+
+    for (_, cidade, combustivel), (_, preco) in ultimas_coletas.items():
+        chave = (cidade, combustivel)
+
+        if chave not in base or preco < base[chave]:
+            base[chave] = preco
+
     return base
 
 

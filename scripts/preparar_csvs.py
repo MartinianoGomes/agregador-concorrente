@@ -20,44 +20,94 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 from pathlib import Path
+
 
 ESTADOS_NORTE = {"AC", "AM", "AP", "PA", "RO", "RR", "TO"}
 
 
+def indice_posto(cnpj: str, n_postos: int = 4) -> int:
+    """Calcula o índice do servidor a partir do CNPJ."""
+
+    if n_postos <= 0:
+        raise ValueError("A quantidade de postos deve ser maior que zero")
+
+    identificador = "".join(c for c in cnpj if c.isdigit())
+
+    if not identificador:
+        raise ValueError("CNPJ não informado")
+
+    codigo = hashlib.sha256(identificador.encode("utf-8")).digest()
+
+    return int.from_bytes(codigo, "big") % n_postos
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fatia o CSV bruto da ANP em recortes por posto.")
+    parser = argparse.ArgumentParser(
+        description="Divide o CSV da ANP em arquivos para os servidores."
+    )
+
     parser.add_argument("--entrada", type=Path, required=True)
-    parser.add_argument("--saida", type=Path, required=True, help="Diretório de saída.")
+    parser.add_argument(
+        "--saida",
+        type=Path,
+        required=True,
+        help="Diretório onde os arquivos serão salvos."
+    )
     parser.add_argument("--n-postos", type=int, default=4)
     parser.add_argument(
         "--separador",
         default=";",
-        help="Separador de colunas do CSV (ANP usa ';' por padrão).",
+        help="Separador das colunas do CSV."
     )
+
     args = parser.parse_args()
+
+    if not 1 <= args.n_postos <= 4:
+        parser.error("--n-postos deve estar entre 1 e 4")
 
     args.saida.mkdir(parents=True, exist_ok=True)
 
-    # TODO: trocar nome das colunas de Estado/Município/Produto/Valor quando
-    # confirmado o layout real do CSV.
-    with args.entrada.open(encoding="latin-1", newline="") as f:
-        reader = csv.DictReader(f, delimiter=args.separador)
+    with args.entrada.open(encoding="latin-1", newline="") as arquivo:
+        reader = csv.DictReader(arquivo, delimiter=args.separador)
+
         colunas_originais = reader.fieldnames or []
-        linhas_norte = [row for row in reader if row.get("Estado - Sigla", "").strip() in ESTADOS_NORTE]
+
+        if "Estado - Sigla" not in colunas_originais:
+            raise ValueError("Coluna 'Estado - Sigla' não encontrada no CSV")
+
+        linhas_norte = [
+            row
+            for row in reader
+            if row.get("Estado - Sigla", "").strip() in ESTADOS_NORTE
+        ]
 
     print(f"Linhas totais da Região Norte: {len(linhas_norte)}")
 
-    # Particionamento simples: cada posto fica com uma fatia do arquivo.
-    # TODO: trocar por particionamento por bandeira (razão social) se preferirem.
-    nomes = ["a", "b", "c", "d"][: args.n_postos]
+    nomes = ["a", "b", "c", "d"][:args.n_postos]
     for i, nome in enumerate(nomes):
-        fatia = [row for j, row in enumerate(linhas_norte) if j % args.n_postos == i]
+        fatia = [
+            row
+            for row in linhas_norte
+            if indice_posto(
+                row.get("CNPJ da Revenda", ""),
+                args.n_postos
+            ) == i
+        ]
+
         saida = args.saida / f"anp_posto_{nome}.csv"
-        with saida.open("w", encoding="utf-8", newline="") as out:
-            writer = csv.DictWriter(out, fieldnames=colunas_originais, delimiter=args.separador)
+
+        with saida.open("w", encoding="utf-8", newline="") as arquivo:
+            writer = csv.DictWriter(
+                arquivo,
+                fieldnames=colunas_originais,
+                delimiter=args.separador
+            )
+
             writer.writeheader()
             writer.writerows(fatia)
+
         print(f"  {saida} — {len(fatia)} linhas")
 
 
