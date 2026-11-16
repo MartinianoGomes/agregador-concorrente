@@ -74,7 +74,7 @@ def imprimir_resultado(resp: dict) -> None:
     consulta = resp.get("consulta", {})
     print()
     print(f"→ {consulta.get('combustivel')} em {consulta.get('cidade')}/{consulta.get('estado')} "
-          f"(modo {consulta.get('estrategia')}) — {resp.get('tempo_ms')} ms")
+          f"(modo {consulta.get('estrategia')}) — {resp.get('tempo_ms')} ms  [id {resp.get('id', '-')}]")
     print()
 
     resultados = resp.get("resultados", []) or []
@@ -100,13 +100,14 @@ def consultar(
     with socket.create_connection((host, porta), timeout=p.TIMEOUT_CLIENTE_S) as conn:
         conn.settimeout(p.TIMEOUT_CLIENTE_S)
         p.enviar_json(conn, {
+            "id": p.novo_id(),
             "operacao": p.OP_CONSULTAR,
             "estado": estado,
             "combustivel": combustivel,
             "cidade": cidade,
             "estrategia": estrategia,
-        })
-        return p.receber_json(conn)
+        }, par="agregador")
+        return p.receber_json(conn, par="agregador")
 
 
 def loop_interativo(host: str, porta: int) -> None:
@@ -141,12 +142,18 @@ def main() -> None:
     parser.add_argument("--combustivel", choices=p.COMBUSTIVEIS)
     parser.add_argument("--estrategia", choices=p.ESTRATEGIAS, default=p.ESTRATEGIA_CONCORRENTE)
     parser.add_argument("--log", default="WARNING")
+    parser.add_argument(
+        "--rastreio", action="store_true",
+        help="Mostra em stderr cada mensagem enviada e recebida, com o JSON completo.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=args.log,
         format="%(asctime)s %(levelname)s %(name)s | %(message)s",
     )
+    if args.rastreio:
+        p.configurar_rastreio("cliente")
 
     nao_interativo = (args.estado, args.cidade, args.combustivel)
     if any(nao_interativo) and not all(nao_interativo):

@@ -48,28 +48,42 @@ def consultar_posto(
     estado: str,
     combustivel: str,
     cidade: str,
+    id_req: str | None = None,
 ) -> dict:
     """Abre conexão TCP com o posto, envia a consulta, aguarda e devolve a resposta.
 
     Erros e timeouts são capturados e devolvidos como dicts com o status
-    apropriado, para não quebrar o loop de consolidação.
+    apropriado, para não quebrar o loop de consolidação. `id_req` é o id de
+    rastreio da consulta, repassado ao posto.
     """
+    par = f"posto {posto.nome}"
+    requisicao = {
+        "operacao": p.OP_CONSULTAR,
+        "estado": estado,
+        "combustivel": combustivel,
+        "cidade": cidade,
+    }
+    if id_req:
+        requisicao["id"] = id_req
+    t0 = time.perf_counter()
+    decorrido = lambda: (time.perf_counter() - t0) * 1000  # noqa: E731
     try:
         with socket.create_connection((posto.host, posto.porta), timeout=p.TIMEOUT_POSTO_S) as conn:
             conn.settimeout(p.TIMEOUT_POSTO_S)
-            p.enviar_json(conn, {
-                "operacao": p.OP_CONSULTAR,
-                "estado": estado,
-                "combustivel": combustivel,
-                "cidade": cidade,
-            })
-            return p.receber_json(conn)
+            p.enviar_json(conn, requisicao, par=par)
+            resposta = p.receber_json(conn, par=par)
+            p.rastrear_evento(f"{par} respondeu em {decorrido():.1f} ms | id={id_req or '-'}")
+            return resposta
     except socket.timeout:
+        p.rastrear_evento(f"✕ {par} sem resposta: timeout após {decorrido():.0f} ms "
+                          f"(limite {p.TIMEOUT_POSTO_S:.0f} s) | id={id_req or '-'}")
         return {"posto": posto.nome, "status": p.STATUS_TIMEOUT}
     except (ConnectionRefusedError, ConnectionError, OSError) as e:
         log.warning("Posto %s indisponível: %s", posto.nome, e)
+        p.rastrear_evento(f"✕ {par} indisponível após {decorrido():.1f} ms: {e} | id={id_req or '-'}")
         return {"posto": posto.nome, "status": p.STATUS_INDISPONIVEL, "mensagem": str(e)}
     except ValueError as e:
+        p.rastrear_evento(f"✕ {par} enviou resposta inválida: {e} | id={id_req or '-'}")
         return {"posto": posto.nome, "status": p.STATUS_ERRO, "mensagem": str(e)}
 
 
@@ -79,8 +93,9 @@ def consultar_sequencial(
     estado: str,
     combustivel: str,
     cidade: str,
+    id_req: str | None = None,
 ) -> list[dict]:
-    return [consultar_posto(p_, estado, combustivel, cidade) for p_ in postos]
+    return [consultar_posto(p_, estado, combustivel, cidade, id_req) for p_ in postos]
 
 
 def consultar_concorrente(
@@ -88,11 +103,12 @@ def consultar_concorrente(
     estado: str,
     combustivel: str,
     cidade: str,
+    id_req: str | None = None,
 ) -> list[dict]:
     resultados: list[dict] = []
-    with ThreadPoolExecutor(max_workers=len(postos)) as pool:
+    with ThreadPoolExecutor(max_workers=len(postos), thread_name_prefix="consulta-posto") as pool:
         futures = {
-            pool.submit(consultar_posto, p_, estado, combustivel, cidade): p_
+            pool.submit(consultar_posto, p_, estado, combustivel, cidade, id_req): p_
             for p_ in postos
         }
         for fut in as_completed(futures):
@@ -121,15 +137,21 @@ def consolidar(respostas_brutas: list[dict]) -> tuple[list[dict], list[dict], di
 def tratar_cliente(conn: socket.socket, addr, postos: list[PostoEndereco]) -> None:
     with conn:
         try:
-            req = p.receber_json(conn)
+            req = p.receber_json(conn, par="cliente")
         except (ConnectionError, ValueError) as e:
             log.warning("Erro ao ler cliente %s: %s", addr, e)
             return
 
         ok, erro = p.validar_requisicao_consulta(req)
         if not ok or "estrategia" not in req:
-            p.enviar_json(conn, {"status": p.STATUS_ERRO, "mensagem": erro or "estrategia obrigatória"})
+            resposta_erro = {"status": p.STATUS_ERRO, "mensagem": erro or "estrategia obrigatória"}
+            if isinstance(req, dict) and isinstance(req.get("id"), str):
+                resposta_erro["id"] = req["id"]
+            p.enviar_json(conn, resposta_erro, par="cliente")
             return
+
+        # o cliente manda o id de rastreio; se não mandar, o agregador cria um
+        id_req = req.get("id") or p.novo_id()
 
         estado = p.normalizar_estado(req["estado"])
         combustivel = req["combustivel"]
@@ -138,13 +160,14 @@ def tratar_cliente(conn: socket.socket, addr, postos: list[PostoEndereco]) -> No
 
         t0 = time.perf_counter()
         if estrategia == p.ESTRATEGIA_SEQUENCIAL:
-            brutas = consultar_sequencial(postos, estado, combustivel, cidade)
+            brutas = consultar_sequencial(postos, estado, combustivel, cidade, id_req)
         else:
-            brutas = consultar_concorrente(postos, estado, combustivel, cidade)
+            brutas = consultar_concorrente(postos, estado, combustivel, cidade, id_req)
         tempo_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         sucessos, indisponiveis, menor = consolidar(brutas)
         resposta = {
+            "id": id_req,
             "consulta": {
                 "combustivel": combustivel,
                 "estado": estado,
@@ -156,10 +179,10 @@ def tratar_cliente(conn: socket.socket, addr, postos: list[PostoEndereco]) -> No
             "menor_preco": menor,
             "tempo_ms": tempo_ms,
         }
-        p.enviar_json(conn, resposta)
+        p.enviar_json(conn, resposta, par="cliente")
         log.info(
-            "cliente=%s estado=%s cidade=%s combustivel=%s estrategia=%s tempo_ms=%.1f sucessos=%d",
-            addr, estado, cidade, combustivel, estrategia, tempo_ms, len(sucessos),
+            "id=%s cliente=%s estado=%s cidade=%s combustivel=%s estrategia=%s tempo_ms=%.1f sucessos=%d",
+            id_req, addr, estado, cidade, combustivel, estrategia, tempo_ms, len(sucessos),
         )
 
 
@@ -168,7 +191,7 @@ def rodar(host: str, porta: int, postos: list[PostoEndereco]) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as servidor:
         servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         servidor.bind((host, porta))
-        servidor.listen(16)
+        servidor.listen(p.BACKLOG)
         log.info("Agregador no ar em %s:%d — %d postos configurados", host, porta, len(postos))
         for po in postos:
             log.info("  • %s em %s:%d", po.nome, po.host, po.porta)
@@ -177,6 +200,7 @@ def rodar(host: str, porta: int, postos: list[PostoEndereco]) -> None:
             t = threading.Thread(
                 target=tratar_cliente,
                 args=(conn, addr, postos),
+                name=f"cliente-{addr[1]}",
                 daemon=True,
             )
             t.start()
@@ -195,12 +219,18 @@ def main() -> None:
         help="Repita este argumento por posto. Formato: nome:host:porta (ex.: A:127.0.0.1:6001)",
     )
     parser.add_argument("--log", default="INFO")
+    parser.add_argument(
+        "--rastreio", action="store_true",
+        help="Mostra em stderr cada mensagem enviada e recebida, com o JSON completo.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=args.log,
         format="%(asctime)s %(levelname)s %(name)s | %(message)s",
     )
+    if args.rastreio:
+        p.configurar_rastreio("agregador")
     try:
         rodar(args.host, args.porta, args.postos)
     except KeyboardInterrupt:

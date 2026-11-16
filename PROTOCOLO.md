@@ -8,6 +8,24 @@ Protocolo JSON sobre TCP utilizado entre cliente ↔ agregador e entre agregador
 - **Enquadramento:** uma mensagem por linha. Cada mensagem é um objeto JSON válido terminado em `\n` (LF, `0x0A`).
 - **Tamanho máximo recomendado:** 64 KiB por mensagem.
 
+## Rastreamento (`id`)
+
+Todas as mensagens aceitam o campo opcional `id` (texto, 1 a 64 caracteres), usado para seguir uma consulta pelos três tipos de processo:
+
+- o **cliente** gera um `id` curto (8 caracteres hexadecimais) em cada consulta;
+- o **agregador** repassa o mesmo `id` a todos os postos e o devolve na resposta ao cliente (se o cliente não mandar, o agregador cria um);
+- cada **posto** devolve o `id` que recebeu.
+
+Com a opção `--rastreio` (cliente, agregador e postos), cada processo escreve em stderr uma linha por mensagem enviada ou recebida:
+
+```
+11:48:31.997 [agregador | consulta-posto_0] → ENVIA para posto A (127.0.0.1:6001) | id=81e284c6 | 105 bytes | {"operacao": "consultar", ...}
+11:48:31.997 [posto A | conexao-42662] ← RECEBE de agregador (127.0.0.1:42662) | id=81e284c6 | 105 bytes | {"operacao": "consultar", ...}
+11:48:37.000 [agregador | consulta-posto_2] ✕ posto C sem resposta: timeout após 5005 ms (limite 5 s) | id=81e284c6
+```
+
+Campos: horário com milissegundos, parte e thread, sentido (`→ ENVIA` / `← RECEBE`), outro lado da conexão (nome e `host:porta`), `id`, tamanho em bytes e o JSON completo como trafegou. Mensagens com JSON inválido também são registradas. Além das mensagens, o agregador registra o tempo de resposta de cada posto, timeouts e conexões recusadas. O posto registra o atraso artificial (`--latencia-ms`).
+
 ## Operações
 
 Apenas a operação `consultar` é definida nesta versão.
@@ -16,6 +34,7 @@ Apenas a operação `consultar` é definida nesta versão.
 
 ```json
 {
+  "id": "81e284c6",
   "operacao": "consultar",
   "estado": "PA",
   "combustivel": "gasolina_comum",
@@ -26,6 +45,7 @@ Apenas a operação `consultar` é definida nesta versão.
 
 | Campo | Tipo | Valores aceitos |
 | --- | --- | --- |
+| `id` | string (opcional) | Id de rastreio, 1 a 64 caracteres |
 | `operacao` | string | `"consultar"` |
 | `estado` | string | Sigla da UF na Região Norte: `"AC"`, `"AM"`, `"AP"`, `"PA"`, `"RO"`, `"RR"`, `"TO"` (normalizada no servidor: caixa alta, sem espaços) |
 | `combustivel` | string | `"gasolina_comum"`, `"gasolina_aditivada"`, `"etanol"`, `"diesel_s10"` |
@@ -39,7 +59,8 @@ Apenas a operação `consultar` é definida nesta versão.
   "operacao": "consultar",
   "estado": "PA",
   "combustivel": "gasolina_comum",
-  "cidade": "Belém"
+  "cidade": "Belém",
+  "id": "81e284c6"
 }
 ```
 
@@ -55,7 +76,8 @@ Sucesso:
   "cidade": "Belém",
   "combustivel": "gasolina_comum",
   "preco": 6.19,
-  "status": "sucesso"
+  "status": "sucesso",
+  "id": "81e284c6"
 }
 ```
 
@@ -82,6 +104,7 @@ Erro na requisição (estado ou combustível inválido, etc.):
 
 ```json
 {
+  "id": "81e284c6",
   "consulta": {
     "combustivel": "gasolina_comum",
     "estado": "PA",
@@ -111,7 +134,7 @@ Erro na requisição (estado ou combustível inválido, etc.):
 Se a requisição for inválida (estado, combustível, cidade ou estratégia), o agregador responde só com o erro, sem consultar os postos:
 
 ```json
-{"status": "erro", "mensagem": "estado inválido: 'SP' (aceitos: AC, AM, AP, PA, RO, RR, TO)"}
+{"status": "erro", "mensagem": "estado inválido: 'SP' (aceitos: AC, AM, AP, PA, RO, RR, TO)", "id": "81e284c6"}
 ```
 
 ## Tratamento de falhas
@@ -130,9 +153,10 @@ Conexão **curta** (um pedido, uma resposta, fechamento): o lado que terminou de
 
 ## Versão
 
-`v2` — 16/11/2026. Mudanças devem ser documentadas neste arquivo e refletidas em `src/protocolo.py` (`PROTOCOLO_VERSAO`).
+`v2.1` — 16/11/2026. Mudanças devem ser documentadas neste arquivo e refletidas em `src/protocolo.py` (`PROTOCOLO_VERSAO`).
 
 | Versão | Mudança |
 | --- | --- |
+| `v2.1` (16/11/2026) | Campo opcional `id` de rastreio em todas as mensagens, ecoado nas respostas; mensagem que não é objeto JSON é rejeitada com `erro`. |
 | `v2` (16/11/2026) | Campo obrigatório `estado` (UF da Região Norte) nas requisições cliente → agregador e agregador → posto; `estado` nas respostas e em `consulta`. |
 | `v1` (14/11/2026) | Versão inicial. |

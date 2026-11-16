@@ -106,7 +106,7 @@ def tratar_conexao(
     """Lê uma requisição, consulta a base e responde."""
     with conn:
         try:
-            msg = p.receber_json(conn)
+            msg = p.receber_json(conn, par="agregador")
         except (ConnectionError, ValueError) as e:
             log.warning("[%s] erro ao ler requisição de %s: %s", nome_posto, addr, e)
             return
@@ -114,7 +114,9 @@ def tratar_conexao(
         ok, erro = p.validar_requisicao_consulta(msg)
         if not ok:
             resposta = {"posto": nome_posto, "status": p.STATUS_ERRO, "mensagem": erro}
-            p.enviar_json(conn, resposta)
+            if isinstance(msg, dict) and isinstance(msg.get("id"), str):
+                resposta["id"] = msg["id"]
+            p.enviar_json(conn, resposta, par="agregador")
             return
 
         estado = p.normalizar_estado(msg["estado"])
@@ -122,6 +124,7 @@ def tratar_conexao(
         combustivel = msg["combustivel"]
 
         if latencia_ms > 0:
+            p.rastrear_evento(f"atraso artificial de {latencia_ms} ms | id={msg.get('id') or '-'}")
             time.sleep(latencia_ms / 1000.0)
 
         preco = base.get((estado, cidade_norm, combustivel))
@@ -141,7 +144,9 @@ def tratar_conexao(
                 "preco": preco,
                 "status": p.STATUS_SUCESSO,
             }
-        p.enviar_json(conn, resposta)
+        if msg.get("id"):
+            resposta["id"] = msg["id"]  # devolve o id de rastreio recebido
+        p.enviar_json(conn, resposta, par="agregador")
         log.info(
             "[%s] %s/%s %s -> %s", nome_posto, cidade_norm, estado, combustivel, resposta["status"]
         )
@@ -153,7 +158,7 @@ def rodar(host: str, porta: int, nome_posto: str, anp_csv: Path, latencia_ms: in
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as servidor:
         servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         servidor.bind((host, porta))
-        servidor.listen(16)
+        servidor.listen(p.BACKLOG)
         log.info(
             "[%s] Posto no ar em %s:%d — %d entradas na base",
             nome_posto, host, porta, len(base),
@@ -164,6 +169,7 @@ def rodar(host: str, porta: int, nome_posto: str, anp_csv: Path, latencia_ms: in
                 target=tratar_conexao,
                 args=(conn, addr),
                 kwargs={"nome_posto": nome_posto, "base": base, "latencia_ms": latencia_ms},
+                name=f"conexao-{addr[1]}",
                 daemon=True,
             )
             t.start()
@@ -177,12 +183,18 @@ def main() -> None:
     parser.add_argument("--anp", type=Path, required=True, help="Caminho do CSV com o recorte da ANP")
     parser.add_argument("--latencia-ms", type=int, default=0, help="Atraso artificial por consulta (ms)")
     parser.add_argument("--log", default="INFO", help="Nível de log: DEBUG, INFO, WARNING, ERROR")
+    parser.add_argument(
+        "--rastreio", action="store_true",
+        help="Mostra em stderr cada mensagem enviada e recebida, com o JSON completo.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
         level=args.log,
         format="%(asctime)s %(levelname)s %(name)s | %(message)s",
     )
+    if args.rastreio:
+        p.configurar_rastreio(f"posto {args.nome}")
     try:
         rodar(args.host, args.porta, args.nome, args.anp, args.latencia_ms)
     except KeyboardInterrupt:
