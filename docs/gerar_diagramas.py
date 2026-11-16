@@ -1,7 +1,7 @@
-"""Gera os 3 diagramas de modelagem em PNG (300 dpi) na pasta docs/.
+"""Gera os diagramas UML do projeto em PNG na pasta docs/.
 
   diagrama_casos_de_uso.png
-  diagrama_arquitetura.png
+  diagrama_componentes.png
   diagrama_sequencia.png
 
     python docs/gerar_diagramas.py
@@ -9,197 +9,400 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse, FancyArrowPatch, FancyBboxPatch, Rectangle
+from matplotlib.patches import Arc, Circle, Ellipse, FancyArrowPatch, Polygon, Rectangle
 
 SAIDA = Path(__file__).resolve().parent
-AZUL, LARANJA, VERDE, CINZA = "#0072B2", "#D55E00", "#009E73", "#555555"
-plt.rcParams.update({"font.size": 10, "savefig.dpi": 300})
+DPI = 250
+
+TINTA = "#1F2328"
+SUAVE = "#57606A"
+BORDA = "#3D4752"
+FUNDO_SISTEMA = "#F6F8FA"
+AZUL, AZUL_CLARO = "#0969DA", "#DDF4FF"
+LARANJA, LARANJA_CLARO = "#BC4C00", "#FFF1E5"
+VERDE, VERDE_CLARO = "#1A7F37", "#DAFBE1"
+ROXO, ROXO_CLARO = "#8250DF", "#FBEFFF"
+CINZA_CLARO = "#EAEEF2"
+NOTA, NOTA_BORDA = "#FFF8C5", "#BF8700"
+TRACO = (0, (5, 3.5))
+
+plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 11})
 
 
-def novo(w: float, h: float, xlim: tuple[float, float], ylim: tuple[float, float]):
-    fig, ax = plt.subplots(figsize=(w, h))
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
+# =====================================================================
+# Primitivas de desenho
+# =====================================================================
+def tela(largura: float, altura: float, polegadas: float):
+    """Área de desenho em que 1 unidade vale o mesmo em x e y."""
+    fig = plt.figure(figsize=(polegadas, polegadas * altura / largura))
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set_xlim(0, largura)
+    ax.set_ylim(0, altura)
+    ax.set_aspect("equal")
     ax.axis("off")
     return fig, ax
 
 
-def caixa(ax, x, y, w, h, texto, fc="#FFFFFF", ec="#222222", lw=1.3, fs=9.5, bold=False, z=2):
-    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.12",
-                                fc=fc, ec=ec, lw=lw, zorder=z))
-    ax.text(x + w / 2, y + h / 2, texto, ha="center", va="center", fontsize=fs,
-            fontweight="bold" if bold else "normal", zorder=z + 1)
+def salvar(fig, nome: str) -> None:
+    fig.savefig(SAIDA / nome, dpi=DPI, facecolor="white")
+    plt.close(fig)
+    print("  ", SAIDA / nome)
 
 
-def seta(ax, p1, p2, texto="", estilo="-|>", ls="-", cor="#222222", patchA=None, patchB=None,
-         dy=0.12, fs=8.5, lw=1.3, rad=0.0, ha="center"):
-    ax.add_patch(FancyArrowPatch(p1, p2, arrowstyle=estilo, mutation_scale=12, lw=lw, ls=ls,
-                                 color=cor, patchA=patchA, patchB=patchB, shrinkA=0, shrinkB=0,
-                                 connectionstyle=f"arc3,rad={rad}", zorder=1))
-    if texto:
-        ax.text((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2 + dy, texto, ha=ha, va="bottom",
-                fontsize=fs, color=cor, zorder=5,
-                bbox=dict(fc="white", ec="none", pad=0.6, alpha=0.9))
+def texto(ax, x, y, s, tam=11, cor=TINTA, negrito=False, italico=False, ha="center", va="center",
+          fundo=None, z=6):
+    extra = {"bbox": dict(fc=fundo, ec="none", pad=1.5)} if fundo else {}
+    ax.text(x, y, s, fontsize=tam, color=cor, ha=ha, va=va, zorder=z, linespacing=1.3,
+            fontweight="bold" if negrito else "normal",
+            fontstyle="italic" if italico else "normal", **extra)
 
 
-def ator(ax, x, y, nome):
-    ax.add_patch(plt.Circle((x, y + 0.75), 0.17, fc="white", ec="#222222", lw=1.4, zorder=3))
-    for (a, b) in [((x, y + 0.58), (x, y + 0.1)), ((x - 0.3, y + 0.42), (x + 0.3, y + 0.42)),
-                   ((x, y + 0.1), (x - 0.25, y - 0.3)), ((x, y + 0.1), (x + 0.25, y - 0.3))]:
-        ax.plot([a[0], b[0]], [a[1], b[1]], color="#222222", lw=1.4, zorder=3)
-    ax.text(x, y - 0.5, nome, ha="center", va="top", fontsize=9.5, fontweight="bold")
-    return (x, y + 0.3)
+def linha(ax, pontos, tracejada=False, cor=TINTA, lw=1.4, z=2):
+    xs, ys = zip(*pontos)
+    ax.plot(xs, ys, color=cor, lw=lw, ls=TRACO if tracejada else "-", zorder=z,
+            solid_capstyle="butt")
 
 
-# --------------------------------------------------------------- casos de uso
+def seta(ax, pontos, ponta="cheia", tracejada=False, cor=TINTA, lw=1.4, z=3):
+    """Polilinha com ponta no último ponto. 'cheia' = mensagem síncrona; 'aberta' = retorno/dependência."""
+    if len(pontos) > 2:
+        linha(ax, pontos[:-1], tracejada, cor, lw, z)
+    ax.add_patch(FancyArrowPatch(pontos[-2], pontos[-1], arrowstyle="-|>" if ponta == "cheia" else "->",
+                                 mutation_scale=16, lw=lw, color=cor, ls=TRACO if tracejada else "-",
+                                 shrinkA=0, shrinkB=0, zorder=z))
+
+
+def retangulo(ax, x, y, w, h, fc="white", ec=BORDA, lw=1.5, z=2):
+    ax.add_patch(Rectangle((x, y), w, h, fc=fc, ec=ec, lw=lw, zorder=z))
+
+
+def nota(ax, x, y, w, h, s, tam=10.5):
+    """Nota UML (canto dobrado)."""
+    d = 0.3
+    ax.add_patch(Polygon([(x, y), (x + w, y), (x + w, y + h - d), (x + w - d, y + h), (x, y + h)],
+                         closed=True, fc=NOTA, ec=NOTA_BORDA, lw=1.3, zorder=4))
+    linha(ax, [(x + w - d, y + h), (x + w - d, y + h - d), (x + w, y + h - d)], cor=NOTA_BORDA,
+          lw=1.1, z=5)
+    texto(ax, x + 0.25, y + h / 2, s, tam=tam, ha="left")
+
+
+# =====================================================================
+# 1. Casos de uso
+# =====================================================================
 def casos_de_uso() -> None:
-    fig, ax = novo(11, 7.2, (0, 12.2), (0, 8))
-    ax.add_patch(Rectangle((3.0, 0.25), 6.6, 7.5, fc="#F7F9FB", ec="#222222", lw=1.3, zorder=0))
-    ax.text(6.3, 7.45, "Sistema Agregador de Preços de Combustíveis", ha="center", va="center",
-            fontsize=10.5, fontweight="bold")
+    fig, ax = tela(21.4, 11.8, polegadas=12.5)
+    W, H = 3.75, 1.4
 
-    def uc(x, y, texto):
-        e = Ellipse((x, y), 2.5, 1.05, fc="white", ec=AZUL, lw=1.5, zorder=2)
-        ax.add_patch(e)
-        ax.text(x, y, texto, ha="center", va="center", fontsize=8.8, zorder=3)
-        return e
+    def ator(x, y, nome):
+        ax.add_patch(Circle((x, y + 1.0), 0.28, fc="white", ec=TINTA, lw=1.6, zorder=4))
+        for a, b in [((x, y + 0.72), (x, y - 0.1)), ((x - 0.5, y + 0.45), (x + 0.5, y + 0.45)),
+                     ((x, y - 0.1), (x - 0.42, y - 0.75)), ((x, y - 0.1), (x + 0.42, y - 0.75))]:
+            linha(ax, [a, b], lw=1.6, z=4)
+        texto(ax, x, y - 1.05, nome, tam=12, negrito=True, va="top")
+        return x, y + 0.35
 
-    u1 = uc(4.4, 6.4, "Consultar preços\n(modo sequencial)")
-    u2 = uc(4.4, 4.9, "Consultar preços\n(modo concorrente)")
-    u4 = uc(4.4, 3.4, "Visualizar ranking e\nmenor preço")
-    u5 = uc(4.4, 1.9, "Visualizar tempo\nde execução")
-    u3 = uc(8.0, 5.65, "Consultar postos\nindependentes")
-    u6 = uc(8.0, 3.85, "Tratar falhas de posto\n(timeout / indisponível)")
-    u7 = uc(8.0, 2.3, "Executar\nexperimentos")
-    u8 = uc(8.0, 0.95, "Gerar gráficos\ne tabelas")
+    def caso(x, y, nome, cor=AZUL):
+        ax.add_patch(Ellipse((x, y), W, H, fc="white", ec=cor, lw=1.8, zorder=3))
+        texto(ax, x, y, nome, tam=11.5)
+        return x, y
 
-    usuario = ator(ax, 1.3, 3.4, "Usuário")
-    posto = ator(ax, 11.0, 5.3, "Posto de\ncombustível")
-    operador = ator(ax, 11.0, 1.7, "Operador\n(experimentos)")
+    def borda(c, alvo):
+        """Ponto na borda da elipse centrada em `c`, na direção de `alvo`."""
+        dx, dy = alvo[0] - c[0], alvo[1] - c[1]
+        t = 1 / math.hypot(dx / (W / 2), dy / (H / 2))
+        return c[0] + dx * t, c[1] + dy * t
 
-    for e, y in [(u1, 6.4), (u2, 4.9), (u4, 3.4), (u5, 1.9)]:
-        seta(ax, usuario, (e.center[0], y), estilo="-", patchB=e)
-    seta(ax, posto, (8.0, 5.65), estilo="-", patchB=u3)
-    seta(ax, operador, (8.0, 2.3), estilo="-", patchB=u7)
+    def associar(a, c):
+        linha(ax, [a, borda(c, a)], lw=1.5, z=2)
 
-    seta(ax, (4.4, 6.4), (8.0, 5.65), "«include»", ls="--", patchA=u1, patchB=u3, cor=CINZA, dy=0.1, fs=7.8)
-    seta(ax, (4.4, 4.9), (8.0, 5.65), "«include»", ls="--", patchA=u2, patchB=u3, cor=CINZA, dy=-0.35, fs=7.8)
-    seta(ax, (8.0, 3.85), (8.0, 5.65), "«extend»", ls="--", patchA=u6, patchB=u3, cor=CINZA, dy=-0.15)
-    seta(ax, (8.0, 2.3), (8.0, 0.95), "«include»", ls="--", patchA=u7, patchB=u8, cor=CINZA, dy=-0.05)
+    def relacao(origem, destino, rotulo):
+        p1, p2 = borda(origem, destino), borda(destino, origem)
+        seta(ax, [p1, p2], ponta="aberta", tracejada=True, cor=SUAVE)
+        mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+        if math.dist(p1, p2) >= 1.8:  # seta longa: rótulo sobre a linha
+            texto(ax, mx, my, rotulo, tam=10, cor=SUAVE, fundo=FUNDO_SISTEMA)
+        elif abs(p2[0] - p1[0]) > abs(p2[1] - p1[1]):  # curta e horizontal: acima
+            texto(ax, mx, my + 0.12, rotulo, tam=10, cor=SUAVE, va="bottom")
+        else:  # curta e vertical: à direita
+            texto(ax, mx + 0.15, my, rotulo, tam=10, cor=SUAVE, ha="left")
 
-    fig.tight_layout()
-    fig.savefig(SAIDA / "diagrama_casos_de_uso.png")
-    plt.close(fig)
+    retangulo(ax, 3.05, 0.3, 15.25, 11.1, fc=FUNDO_SISTEMA, ec=BORDA, lw=1.5, z=0)
+    texto(ax, 10.67, 10.95, "Agregador de Preços de Combustíveis", tam=13.5, negrito=True)
 
+    L, M, R = 5.25, 10.55, 16.0
+    consultar = caso(L, 7.6, "Consultar preços")
+    ver = caso(L, 4.0, "Ver ranking,\nmenor preço e tempo")
+    local = caso(M, 9.45, "Informar estado (UF)\ne município")
+    escolher = caso(M, 7.6, "Escolher combustível\ne estratégia")
+    postos = caso(M, 5.75, "Consultar os\n4 postos")
+    falha = caso(M, 3.25, "Tratar falha de posto\n(timeout, fora do ar)")
+    rejeitar = caso(R, 9.45, "Rejeitar consulta\ninválida")
+    graficos = caso(M, 1.15, "Gerar gráficos\ne tabelas", cor=ROXO)
+    experimentos = caso(R, 3.25, "Executar\nexperimentos", cor=ROXO)
+    preparar = caso(R, 1.15, "Preparar dados\nda ANP", cor=ROXO)
 
-# ------------------------------------------------------------------ arquitetura
-def arquitetura() -> None:
-    fig, ax = novo(11.5, 6.6, (0, 15), (0, 8.6))
+    usuario = ator(1.4, 5.9, "Usuário")
+    posto = ator(20.1, 5.4, "Posto de\ncombustível")
+    operador = ator(20.1, 1.8, "Operador")
 
-    # Clientes
-    for i, y in enumerate([5.6, 4.0, 2.4]):
-        caixa(ax, 0.3, y, 2.6, 1.0, "Cliente CLI\n(src/cliente.py)" if i == 0 else
-              ("Cliente CLI" if i == 1 else "Cliente CLI (N)"), fc="#E8F1FA", ec=AZUL)
-    ax.text(1.6, 7.0, "Clientes", ha="center", fontweight="bold", color=AZUL)
+    associar(usuario, consultar)
+    associar(usuario, ver)
+    associar(posto, postos)
+    associar(operador, experimentos)
+    associar(operador, preparar)
 
-    # Agregador
-    ax.add_patch(FancyBboxPatch((4.6, 1.5), 4.6, 5.9, boxstyle="round,pad=0.02,rounding_size=0.15",
-                                fc="#FDF1E7", ec=LARANJA, lw=1.8, zorder=1))
-    ax.text(6.9, 7.1, "Agregador — porta 5000 (src/agregador.py)", ha="center", fontweight="bold",
-            color=LARANJA, fontsize=9.5)
-    caixa(ax, 4.9, 5.4, 4.0, 1.2, "Receptor\n1 thread por cliente\nvalida a requisição", fs=9)
-    caixa(ax, 4.9, 3.5, 4.0, 1.5, "Despachante\nsequencial: um posto após o outro\n"
-          "concorrente: ThreadPoolExecutor\n(1 thread por posto, timeout 5 s)", fs=8.6)
-    caixa(ax, 4.9, 1.8, 4.0, 1.2, "Consolidador\nranking por preço, menor preço,\ntempo_ms, indisponíveis", fs=8.8)
+    relacao(consultar, local, "«include»")
+    relacao(consultar, escolher, "«include»")
+    relacao(consultar, postos, "«include»")
+    relacao(rejeitar, local, "«extend»")
+    relacao(falha, postos, "«extend»")
+    relacao(experimentos, graficos, "«include»")
 
-    # Postos
-    ax.text(12.6, 7.55, "Postos independentes\n(processos separados)", ha="center", fontweight="bold",
-            color=VERDE)
-    for i, (nome, porta, y) in enumerate([("A", 6001, 5.85), ("B", 6002, 4.45), ("C", 6003, 3.05),
-                                           ("D", 6004, 1.65)]):
-        caixa(ax, 10.6, y, 4.0, 1.15, f"Posto {nome} — porta {porta}\nbase em memória\n(CSV ANP recorte {nome})",
-              fc="#E6F5EF", ec=VERDE, fs=8.8)
-
-    # Setas cliente -> agregador
-    for y in (6.1, 4.5, 2.9):
-        seta(ax, (2.9, y), (4.9 if y == 6.1 else 4.6, 6.0 if y == 6.1 else y), estilo="<|-|>", cor="#222222")
-    ax.text(3.75, 6.75, "TCP / JSON\n(1 requisição, 1 resposta)", ha="center", fontsize=8, color=CINZA)
-
-    # Setas agregador -> postos
-    for y in (6.425, 5.025, 3.625, 2.225):
-        seta(ax, (9.2, y), (10.6, y), estilo="<|-|>", cor="#222222")
-    ax.text(9.9, 6.7, "TCP / JSON", ha="center", fontsize=8, color=CINZA)
-
-    # Pipeline de dados
-    caixa(ax, 0.3, 0.1, 3.4, 0.9, "data/anp_bruto.csv\n(1º sem. 2026, 422 mil linhas)", fc="#F2F2F2", fs=8.2)
-    caixa(ax, 4.3, 0.1, 3.9, 0.9, "scripts/preparar_csvs.py\nfiltro Norte + hash(CNPJ) mod 4", fc="#F2F2F2", fs=8.2)
-    caixa(ax, 8.8, 0.1, 3.4, 0.9, "data/anp_posto_{a..d}.csv", fc="#F2F2F2", fs=8.2)
-    seta(ax, (3.7, 0.55), (4.3, 0.55), cor=CINZA)
-    seta(ax, (8.2, 0.55), (8.8, 0.55), cor=CINZA)
-    seta(ax, (12.2, 0.55), (13.5, 1.65), "carregados na\ninicialização", cor=CINZA, dy=0.0, fs=7.8, rad=-0.15)
-
-    fig.tight_layout()
-    fig.savefig(SAIDA / "diagrama_arquitetura.png")
-    plt.close(fig)
+    nota(ax, R - 1.85, 6.85, 3.7, 1.15, "UF fora da Região Norte ou\ncombustível desconhecido",
+         tam=10)
+    linha(ax, [(R, 6.85 + 1.15), (R, 9.45 - H / 2)], tracejada=True, cor=NOTA_BORDA, lw=1.1)
+    salvar(fig, "diagrama_casos_de_uso.png")
 
 
-# -------------------------------------------------------------------- sequência
+# =====================================================================
+# 2. Componentes
+# =====================================================================
+def componentes() -> None:
+    fig, ax = tela(19.4, 12.6, polegadas=12.5)
+
+    def icone(x, y, cor):
+        """Ícone UML de componente com canto superior direito em (x, y)."""
+        retangulo(ax, x - 0.42, y - 0.5, 0.36, 0.4, fc="white", ec=cor, lw=1.2, z=5)
+        for dy in (0.17, 0.33):
+            retangulo(ax, x - 0.5, y - dy - 0.04, 0.16, 0.09, fc="white", ec=cor, lw=1.1, z=6)
+
+    def componente(x, y, w, h, nome, detalhe="", cor=AZUL, fc=AZUL_CLARO, tipo="component",
+                   nome_no_topo=False):
+        retangulo(ax, x, y, w, h, fc=fc, ec=cor, lw=1.8, z=2)
+        icone(x + w - 0.12, y + h - 0.12, cor)
+        if nome_no_topo:
+            yt = y + h - 0.42
+        else:  # centraliza o bloco estereótipo + nome + detalhe na caixa
+            n = detalhe.count("\n") + 1 if detalhe else 0
+            yt = y + h / 2 + (0.335 + 0.165 * n if detalhe else 0.18)
+        texto(ax, x + w / 2, yt, f"«{tipo}»", tam=9.5, cor=SUAVE)
+        texto(ax, x + w / 2, yt - 0.4, nome, tam=12.5, negrito=True)
+        if detalhe and not nome_no_topo:
+            texto(ax, x + w / 2, yt - 0.82, detalhe, tam=10.5, va="top")
+
+    def artefato(x, y, w, h, nome, detalhe):
+        d = 0.32
+        ax.add_patch(Polygon([(x, y), (x + w, y), (x + w, y + h - d), (x + w - d, y + h), (x, y + h)],
+                             closed=True, fc=CINZA_CLARO, ec=BORDA, lw=1.4, zorder=2))
+        linha(ax, [(x + w - d, y + h), (x + w - d, y + h - d), (x + w, y + h - d)], cor=BORDA, lw=1.2)
+        texto(ax, x + w / 2, y + h - 0.32, "«artifact»", tam=9.5, cor=SUAVE)
+        texto(ax, x + w / 2, y + h / 2 - 0.08, nome, tam=11, negrito=True)
+        texto(ax, x + w / 2, y + 0.3, detalhe, tam=10, cor=SUAVE)
+
+    def interface(x, y, provedor_x, consumidor_x, nome, protocolo):
+        """Pirulito (interface fornecida) + soquete (interface requerida)."""
+        r, rs = 0.2, 0.36
+        lado = 1 if provedor_x > x else -1
+        linha(ax, [(x + lado * r, y), (provedor_x, y)], lw=1.5)
+        ax.add_patch(Circle((x, y), r, fc="white", ec=TINTA, lw=1.6, zorder=5))
+        t1, t2 = (105, 255) if lado > 0 else (-75, 75)
+        ax.add_patch(Arc((x, y), 2 * rs, 2 * rs, theta1=t1, theta2=t2, color=TINTA, lw=1.6, zorder=5))
+        linha(ax, [(consumidor_x, y), (x - lado * rs, y)], lw=1.5)
+        texto(ax, x, y + 0.65, nome, tam=11, negrito=True)
+        texto(ax, x, y - 0.62, protocolo, tam=9.5, cor=SUAVE)
+
+    def dependencia(pontos, rotulo, pos, ha="center", va="center", fundo="white"):
+        seta(ax, pontos, ponta="aberta", tracejada=True, cor=SUAVE)
+        texto(ax, pos[0], pos[1], rotulo, tam=10, cor=SUAVE, ha=ha, va=va, fundo=fundo)
+
+    # Experimentos e Cliente
+    componente(0.4, 9.6, 4.3, 1.9, "Experimentos", "experimentos/ (exp. 1 a 5)", cor=ROXO,
+               fc=ROXO_CLARO)
+    componente(0.4, 5.2, 4.3, 2.75, "Cliente CLI",
+               "src/cliente.py\npede UF, município,\ncombustível e estratégia")
+
+    # Agregador e suas partes internas
+    ax0, ay0, aw, ah = 7.1, 4.5, 5.1, 7.0
+    componente(ax0, ay0, aw, ah, "Agregador", cor=LARANJA, fc=LARANJA_CLARO, nome_no_topo=True)
+    texto(ax, ax0 + aw / 2, ay0 + ah - 1.2, "src/agregador.py · porta 5000", tam=10.5, cor=SUAVE)
+    partes = [(8.55, "Recepção", "1 thread por cliente;\nvalida a requisição e o id"),
+              (6.85, "Despacho", "sequencial ou concorrente;\ntimeout de 5 s por posto"),
+              (5.15, "Consolidação", "ranking, menor preço,\nindisponíveis, tempo_ms")]
+    for y, nome, desc in partes:
+        retangulo(ax, ax0 + 0.35, y - 0.4, aw - 0.7, 1.35, fc="white", ec=LARANJA, lw=1.2, z=3)
+        texto(ax, ax0 + aw / 2, y + 0.65, nome, tam=11, negrito=True)
+        texto(ax, ax0 + aw / 2, y + 0.08, desc, tam=10)
+    for y_de, y_para in ((8.55 - 0.4, 6.85 + 0.95), (6.85 - 0.4, 5.15 + 0.95)):
+        seta(ax, [(ax0 + aw / 2, y_de), (ax0 + aw / 2, y_para)], cor=LARANJA, lw=1.2)
+
+    # Posto: 4 instâncias empilhadas
+    px, py, pw, ph = 14.6, 6.2, 4.3, 2.75
+    for k in (2, 1):
+        retangulo(ax, px + 0.18 * k, py - 0.18 * k, pw, ph, fc=VERDE_CLARO, ec=VERDE, lw=1.4, z=1)
+    componente(px, py, pw, ph, "Posto", "src/posto.py\n4 processos: A, B, C, D\nportas 6001 a 6004",
+               cor=VERDE, fc=VERDE_CLARO)
+
+    # Interfaces
+    interface(5.9, 6.6, ax0, 4.7, "IConsulta", "JSON / TCP")
+    interface(13.4, 7.6, px, ax0 + aw, "IPosto", "JSON / TCP")
+
+    # Biblioteca comum
+    componente(ax0, 1.9, aw, 1.95, "protocolo.py", "mensagens JSON, validação\ne rastreio",
+               tipo="library", cor=BORDA, fc=CINZA_CLARO)
+
+    # Dependências
+    dependencia([(2.55, 9.6), (2.55, 7.8)], "«use»", (2.55, 8.7))
+    dependencia([(4.7, 10.3), (ax0, 10.3)], "«create»\ninicia os processos", (5.9, 10.45),
+                va="bottom", fundo=None)
+    dependencia([(ax0 + aw / 2, ay0), (ax0 + aw / 2, 3.7)], "«use»", (ax0 + aw / 2 + 0.2, 4.1),
+                ha="left", fundo=None)
+    dependencia([(2.55, 5.4), (2.55, 2.75), (ax0, 2.75)], "«use»", (2.55, 4.1))
+    dependencia([(px + 0.8, py - 0.36), (px + 0.8, 2.75), (ax0 + aw, 2.75)], "«use»", (px + 0.8, 4.1))
+
+    # Dados
+    artefato(0.4, 0.15, 4.3, 1.4, "anp_bruto.csv", "série histórica da ANP")
+    componente(ax0, 0.15, aw, 1.4, "preparar_csvs.py", "", tipo="script", cor=BORDA, fc="white")
+    artefato(px, 0.15, pw, 1.4, "anp_posto_a…d.csv", "um recorte por posto")
+    seta(ax, [(4.7, 0.85), (ax0, 0.85)], cor=SUAVE)
+    seta(ax, [(ax0 + aw, 0.85), (px, 0.85)], cor=SUAVE)
+    texto(ax, 5.9, 1.12, "lê", tam=10, cor=SUAVE)
+    texto(ax, 13.4, 1.12, "gera", tam=10, cor=SUAVE)
+    dependencia([(px + 3.6, 1.55), (px + 3.6, py - 0.36)], "carregado na\ninicialização",
+                (px + 3.6, 4.1))
+
+    salvar(fig, "diagrama_componentes.png")
+
+
+# =====================================================================
+# 3. Sequência
+# =====================================================================
 def sequencia() -> None:
-    fig, ax = novo(11.5, 9.2, (0, 15.5), (0, 12.4))
-    vidas = [("Usuário", 1.0), ("Cliente", 3.1), ("Agregador", 6.2), ("Posto A", 9.2),
-             ("Posto B", 11.0), ("Posto C", 12.8), ("Posto D", 14.6)]
-    topo, base = 11.6, 0.4
-    for nome, x in vidas:
-        caixa(ax, x - 0.8, topo, 1.6, 0.6, nome, fc="#E8F1FA", ec=AZUL, fs=9, bold=True)
-        ax.plot([x, x], [topo, base], color="#999999", lw=1, ls=(0, (5, 4)), zorder=0)
-    X = dict(vidas)
+    X = {"Usuário": 1.9, "Cliente": 5.6, "Agregador": 10.0, "Posto (A a D)": 15.3}
+    LARG, TOPO = 18.0, 40.0  # desenha de cima para baixo; a altura final é recortada no fim
+    fig, ax = tela(LARG, TOPO, polegadas=11.5)
+    BARRA = 0.14  # meia largura das barras de ativação
+    ativos = {"Agregador", "Posto (A a D)"}
 
-    def msg(x1, x2, y, texto, ls="-", cor="#222222", dy=0.08):
-        seta(ax, (X[x1], y), (X[x2], y), texto, ls=ls, cor=cor, dy=dy, fs=8.3)
+    def msg(de, para, y, rotulo, retorno=False):
+        x1, x2 = X[de], X[para]
+        sentido = 1 if x2 > x1 else -1
+        if de in ativos:
+            x1 += sentido * BARRA
+        if para in ativos:
+            x2 -= sentido * BARRA
+        seta(ax, [(x1, y), (x2, y)], ponta="aberta" if retorno else "cheia", tracejada=retorno)
+        texto(ax, (x1 + x2) / 2, y + 0.12, rotulo, tam=11, va="bottom")
 
-    def auto(x, y, texto):
-        ax.add_patch(Rectangle((X[x] - 0.12, y - 0.55), 0.24, 0.55, fc="#FDF1E7", ec=LARANJA, zorder=2))
-        ax.text(X[x] + 0.28, y - 0.27, texto, fontsize=8.3, va="center", color=LARANJA)
+    def propria(quem, y, rotulo):
+        x = X[quem] + BARRA
+        seta(ax, [(x, y), (x + 0.8, y), (x + 0.8, y - 0.5), (x + 0.03, y - 0.5)])
+        texto(ax, x + 1.0, y - 0.25, rotulo, tam=11, ha="left", fundo="white")
 
-    msg("Usuário", "Cliente", 10.9, "informa estado, cidade,\ncombustível e estratégia", dy=0.05)
-    msg("Cliente", "Agregador", 10.0, "consultar {estado, cidade, combustivel, estrategia}", dy=0.05)
-    auto("Agregador", 9.6, "valida requisição e inicia cronômetro")
+    def fragmento(x1, x2, y_topo, y_base, operador, guarda="", descricao=""):
+        retangulo(ax, x1, y_base, x2 - x1, y_topo - y_base, fc="none", ec=TINTA, lw=1.4, z=4)
+        larg = 0.35 + 0.17 * len(operador)
+        ax.add_patch(Polygon([(x1, y_topo), (x1 + larg, y_topo), (x1 + larg, y_topo - 0.32),
+                              (x1 + larg - 0.2, y_topo - 0.52), (x1, y_topo - 0.52)],
+                             closed=True, fc=CINZA_CLARO, ec=TINTA, lw=1.4, zorder=5))
+        texto(ax, x1 + 0.13, y_topo - 0.26, operador, tam=11, negrito=True, ha="left")
+        if guarda:
+            texto(ax, x1 + larg + 0.15, y_topo - 0.26, guarda, tam=11, ha="left", cor=SUAVE,
+                  fundo="white")
+        if descricao:
+            texto(ax, x2 - 0.2, y_topo - 0.26, descricao, tam=10.5, ha="right", cor=SUAVE,
+                  italico=True, fundo="white")
 
-    # fragmento par (concorrente)
-    ax.add_patch(Rectangle((5.0, 3.6), 10.2, 5.4, fc="none", ec="#222222", lw=1.2, zorder=3))
-    ax.add_patch(Rectangle((5.0, 8.6), 3.4, 0.4, fc="#EEEEEE", ec="#222222", lw=1.2, zorder=3))
-    ax.text(5.1, 8.8, "par  [estratégia = concorrente]", fontsize=8.5, va="center", fontweight="bold", zorder=4)
-    ax.text(5.15, 8.25, "uma thread por posto; no modo sequencial, um posto após o outro",
-            fontsize=7.8, style="italic", color=CINZA)
+    def separador(x1, x2, y, guarda):
+        linha(ax, [(x1, y), (x2, y)], tracejada=True, lw=1.2, z=4)
+        texto(ax, x1 + 0.2, y - 0.32, guarda, tam=11, ha="left", cor=SUAVE, fundo="white")
 
-    ys = {"Posto A": 7.6, "Posto B": 7.2, "Posto C": 6.8, "Posto D": 6.4}
-    for p_, y in ys.items():
-        msg("Agregador", p_, y, "consultar" if p_ == "Posto A" else "", dy=0.04)
-    ax.text(X["Posto A"] + 0.15, 7.95, "", fontsize=8)
-    for p_, y in {"Posto A": 5.5, "Posto B": 5.1, "Posto C": 4.7, "Posto D": 4.3}.items():
-        msg(p_, "Agregador", y, "{preço, status}" if p_ == "Posto A" else "", ls="--", dy=0.04)
+    def ativacao(quem, y_topo, y_base, cor=LARANJA, fc=LARANJA_CLARO):
+        retangulo(ax, X[quem] - BARRA, y_base, 2 * BARRA, y_topo - y_base, fc=fc, ec=cor, lw=1.2, z=3)
 
-    ax.add_patch(Rectangle((7.0, 3.75), 5.2, 0.45, fc="#FFF8E1", ec="#E69F00", zorder=4))
-    ax.text(9.6, 3.975, "falha / timeout de 5 s  →  status indisponivel ou timeout",
-            ha="center", va="center", fontsize=7.8, zorder=5)
+    # Cabeçalhos
+    y_cab = TOPO - 0.3
+    for nome, x in X.items():
+        cor, fc = (VERDE, VERDE_CLARO) if nome.startswith("Posto") else (AZUL, AZUL_CLARO)
+        retangulo(ax, x - 1.45, y_cab - 0.9, 2.9, 0.9, fc=fc, ec=cor, lw=1.6, z=6)
+        texto(ax, x, y_cab - 0.45, nome, tam=12, negrito=True, z=7)
 
-    auto("Agregador", 3.2, "consolida: ordena por preço, define menor_preco,\nmede tempo_ms")
-    msg("Agregador", "Cliente", 1.9, "{resultados, indisponiveis, menor_preco, tempo_ms}", ls="--", dy=0.05)
-    msg("Cliente", "Usuário", 1.0, "exibe ranking, menor preço e tempo", ls="--", dy=0.05)
+    y = y_cab - 0.9 - 1.3
+    msg("Usuário", "Cliente", y, "estado, município,\ncombustível, estratégia")
+    y -= 1.6
+    y_ini_ag = y
+    msg("Cliente", "Agregador", y, "consultar(id, estado, cidade,\ncombustivel, estrategia)")
+    texto(ax, X["Cliente"] - 0.2, y - 0.4, "gera o id\nde rastreio", tam=9.5, cor=SUAVE,
+          italico=True, ha="right")
+    y -= 0.55
+    propria("Agregador", y, "validar requisição")
 
-    fig.tight_layout()
-    fig.savefig(SAIDA / "diagrama_sequencia.png")
-    plt.close(fig)
+    # alt externo: requisição inválida × válida
+    a1, a2 = 0.3, LARG - 0.3
+    topo_alt = y - 0.95
+    y = topo_alt - 1.25
+    msg("Agregador", "Cliente", y, "erro, mensagem, id", retorno=True)
+    y -= 1.0
+    msg("Cliente", "Usuário", y, "mostra o erro", retorno=True)
+    y -= 0.6
+    separador(a1, a2, y, "[requisição válida]")
+
+    # alt interno: concorrente × sequencial
+    b1, b2 = 6.4, LARG - 0.6
+    topo_alt2 = y - 0.85
+
+    def bloco(y_topo, operador, descricao):
+        fragmento(b1 + 0.35, b2 - 0.35, y_topo, y_topo - 2.1, operador, descricao=descricao)
+        ativacao("Posto (A a D)", y_topo - 1.0, y_topo - 1.7, VERDE, VERDE_CLARO)
+        msg("Agregador", "Posto (A a D)", y_topo - 1.0, "consultar(id, estado, cidade, combustivel)")
+        msg("Posto (A a D)", "Agregador", y_topo - 1.7, "status, preço, id", retorno=True)
+        return y_topo - 2.1
+
+    fim_par = bloco(topo_alt2 - 0.75, "par", "uma thread por posto, todas ao mesmo tempo")
+    y_sep = fim_par - 0.35
+    separador(b1, b2, y_sep, "[sequencial]")
+    fim_loop = bloco(y_sep - 0.7, "loop", "um posto de cada vez")
+    base_alt2 = fim_loop - 0.35
+    fragmento(b1, b2, topo_alt2, base_alt2, "alt", guarda="[concorrente]")
+
+    # nota sobre falhas, ligada à linha de vida do posto
+    nw, nh = 6.3, 1.55
+    nx, ny = X["Posto (A a D)"] - nw + 1.3, base_alt2 - 0.45 - nh
+    nota(ax, nx, ny, nw, nh, "sem resposta em 5 s  →  timeout\nposto fora do ar  →  indisponivel\n"
+         "município fora da UF  →  nao_atendida")
+    linha(ax, [(nx + nw / 2, ny + nh), (X["Posto (A a D)"], base_alt2 - 0.05)], tracejada=True,
+          cor=NOTA_BORDA, lw=1.1, z=3)
+
+    y = ny - 0.45
+    propria("Agregador", y, "consolidar resultados")
+    y -= 1.5
+    msg("Agregador", "Cliente", y, "id, ranking, indisponíveis,\nmenor preço, tempo_ms", retorno=True)
+    y_fim_ag = y
+    y -= 1.35
+    msg("Cliente", "Usuário", y, "mostra ranking,\ntempo e id", retorno=True)
+    base_alt = y - 0.45
+    fragmento(a1, a2, topo_alt, base_alt, "alt", guarda="[requisição inválida]")
+
+    ativacao("Agregador", y_ini_ag, y_fim_ag)
+    y_fim = base_alt - 0.45
+    for x in X.values():
+        linha(ax, [(x, y_cab - 0.9), (x, y_fim)], tracejada=True, cor="#8C959F", lw=1.1, z=0)
+
+    # recorta a altura ao conteúdo, mantendo a escala
+    base = y_fim - 0.25
+    ax.set_ylim(base, TOPO)
+    fig.set_size_inches(11.5, 11.5 * (TOPO - base) / LARG)
+    salvar(fig, "diagrama_sequencia.png")
 
 
 if __name__ == "__main__":
+    print("Gerando diagramas:")
     casos_de_uso()
-    arquitetura()
+    componentes()
     sequencia()
-    print("diagramas gerados em", SAIDA)

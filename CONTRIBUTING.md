@@ -51,5 +51,5 @@ Já listados no `.gitignore`:
 
 ## Comunicação do grupo
 
-- Para decisões pequenas: comentário no doc do Google Docs (apontado no README) ou no próprio PR.
+- Para decisões pequenas: comentário no próprio PR.
 - Para mudanças arquiteturais: criem uma **issue** no GitHub e discutam lá antes de abrir PR.

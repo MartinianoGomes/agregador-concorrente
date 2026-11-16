@@ -2,24 +2,16 @@
 
 Materiais auxiliares do projeto.
 
-## Doc vivo de requisitos e modelagem UML
-
-A especificação de requisitos e os diagramas UML ficam em um **doc colaborativo do Claude Docs** (exportável para Google Docs):
-
-<https://claude.ai/artifact/T1jSLmcGik6xKXDqK5aL2B>
-
-> Como importar para Google Docs: fazer upload do `.docx` exportado para o Drive, abrir com Google Docs e aceitar comentários do grupo.
-
 ## Diagramas
 
-Os PNGs (300 dpi) são gerados com matplotlib pelo script `gerar_diagramas.py`:
+Os PNGs (250 dpi) são gerados com matplotlib pelo script `gerar_diagramas.py`:
 
 ```bash
 python docs/gerar_diagramas.py
 ```
 
-- `diagrama_casos_de_uso.png`
-- `diagrama_arquitetura.png`
-- `diagrama_sequencia.png`
+- `diagrama_casos_de_uso.png`: atores (Usuário, Posto de combustível, Operador) e casos de uso. Consultar preços inclui informar estado e município, escolher combustível e estratégia e consultar os 4 postos. Rejeitar consulta inválida e Tratar falha de posto são extensões.
+- `diagrama_componentes.png`: Cliente, Agregador (com recepção, despacho e consolidação), as 4 instâncias de Posto, as interfaces `IConsulta` e `IPosto` (JSON sobre TCP), a biblioteca `protocolo.py`, os Experimentos e o caminho dos dados da ANP até os postos.
+- `diagrama_sequencia.png`: uma consulta completa com o `id` de rastreio. Um `alt` separa a requisição inválida da válida; dentro da válida, outro `alt` mostra o modo concorrente (`par`) e o sequencial (`loop`). Uma nota resume os status de falha.
 
-Ficam versionados — são a parte visual da entrega final e pesam algumas centenas de KB cada.
+Os PNGs ficam versionados.
