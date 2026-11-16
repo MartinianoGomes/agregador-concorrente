@@ -6,12 +6,12 @@ Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gle
 
 ## Integrantes
 
-- Bruno
-- Gustavo
+- Bruno Silva
+- Gustavo Borges
 - João Paulo
-- Ketly
-- Marília
-- Martiniano Gomes Barros Cirqueira Neto
+- Ketly Wine
+- Marília Francalino
+- Martiniano Gomes
 
 ## Documentação
 
@@ -91,7 +91,7 @@ O script gera `data/anp_posto_a.csv`, `data/anp_posto_b.csv`, `data/anp_posto_c.
 scripts\run_all.bat
 ```
 
-Os scripts sobem os 4 postos (portas 6001–6004) e o agregador (porta 5000) em processos separados. Para parar tudo, Ctrl+C. Para usar outra porta no agregador, defina `AGREGADOR_PORTA` (ex.: `AGREGADOR_PORTA=15000 ./scripts/run_all.sh`).
+Os scripts sobem os 4 postos (portas 6001–6004) e o agregador (porta 5000) em processos separados. Para parar tudo, Ctrl+C (no Windows, feche as janelas abertas). No `run_all.sh`, a porta do agregador pode ser trocada com `AGREGADOR_PORTA` (ex.: `AGREGADOR_PORTA=15000 ./scripts/run_all.sh`); o `run_all.bat` usa sempre a 5000.
 
 **Em outro terminal**, inicie um dos clientes. Os dois consultam o agregador pelo mesmo protocolo TCP.
 
@@ -109,7 +109,7 @@ python interface_grafica.py --porta 15000    # outra porta (ou AGREGADOR_PORTA=1
 python interface_grafica.py --rastreio       # mostra as mensagens no terminal
 ```
 
-Na interface, escolha o município no formato `CIDADE - UF` (ex.: `BELEM - PA`). Dá para digitar parte do nome, com ou sem acento, para filtrar a lista, que vem dos CSVs em `data/`. A tela mostra o ranking, o menor preço, o tempo medido pelo agregador e o `id` da consulta.
+Na interface, escolha o município no formato `CIDADE - UF` (ex.: `BELEM - PA`). Dá para digitar parte do nome, com ou sem acento, para filtrar a lista, que vem dos CSVs em `data/`. Sem os CSVs a lista fica vazia, e é preciso digitar o município já no formato `CIDADE - UF`. A tela mostra o ranking, o menor preço, o tempo medido pelo agregador e o `id` da consulta.
 
 **Demonstração (macOS):** no macOS a porta 5000 costuma estar ocupada pelo sistema (AirPlay). O `scripts/apresentar.sh` sobe os servidores com o agregador na porta 15000 e confere antes se as portas estão livres (precisa do `lsof`). Depois, em outro terminal: `python interface_grafica.py --porta 15000`.
 
@@ -120,6 +120,14 @@ O cliente pergunta, nesta ordem, o **estado** (UF da Região Norte: AC, AM, AP, 
 ```bash
 python -m src.cliente --estado PA --cidade Belém --combustivel gasolina_comum --estrategia concorrente
 ```
+
+## Testes
+
+```bash
+python -m pytest
+```
+
+Os testes cobrem o protocolo (validação, normalização e rastreio), a leitura dos CSVs pelos postos, o particionamento por CNPJ, a lista de municípios da interface gráfica e a infraestrutura dos experimentos. Rodam em menos de um segundo e não precisam de servidores no ar nem do Tkinter.
 
 ## Experimentos
 
@@ -148,7 +156,7 @@ python -m experimentos.plot_comparativo
 
 - **Pergunta:** quanto tempo uma consulta leva em cada estratégia, com os postos respondendo como numa rede real?
 - **Como funciona:** cada posto espera 200 ms antes de responder, simulando a rede. O exp. 1 faz 10 consultas seguidas no modo sequencial; o exp. 2 faz o mesmo no modo concorrente. Antes delas há uma consulta de aquecimento, que é descartada. O tempo registrado é o `tempo_ms` medido pelo agregador.
-- **Opções:** `--rodadas N` (padrão 10); `--latencia-ms L` muda o atraso de cada posto (padrão 200; com 0 os postos respondem em cerca de 1 ms e a comparação mede só ruído); `--externo` usa o agregador já em execução na porta 5000, em vez de subir um próprio.
+- **Opções:** `--rodadas N` (padrão 10); `--latencia-ms L` muda o atraso de cada posto (padrão 200; com 0 os postos respondem em cerca de 1 ms e a comparação mede só ruído); `--externo` usa o agregador já em execução na porta 5000, em vez de subir um próprio (nesse caso vale a latência com que os postos foram iniciados, e `--latencia-ms` é ignorado).
 - **Comparação:** o `plot_comparativo` lê os resultados dos dois e gera os gráficos lado a lado. Rode-o depois dos exps. 1 e 2. Se os dois tiverem rodado com parâmetros diferentes (cidade, combustível, latência ou rodadas), ele recusa a comparação e diz o que difere.
 - **O que esperar:** o sequencial soma as quatro esperas (≈ 800 ms) e o concorrente espera só a mais lenta (≈ 200 ms).
 - **Saídas:** `exp_1_sequencial.json`, `exp_2_concorrente.json` e os gráficos `exp_12_barras.png` (média ± desvio), `exp_12_rodadas.png` (tempo de cada rodada) e `exp_12_boxplot.png` (distribuição).
@@ -197,12 +205,13 @@ python -m experimentos.exp_5_indisponibilidade
 | 0. Referência | 4 postos funcionando (latência de 500 ms) | 4 respostas com `sucesso` |
 | A. Fora do ar antes | O posto D nunca é iniciado | D aparece como `indisponivel` |
 | B. Cai durante a consulta | O posto A é encerrado 0,5 s depois de a consulta começar (latência de 2 s) | A aparece como `indisponivel` |
-| C. Pendurado | O posto D demora 6 s, mais que o timeout de 5 s | D aparece como `timeout`, e a consulta termina perto dos 5 s |
+| C. Pendurado | O posto D demora 6 s, mais que o timeout de 5 s; os outros, 500 ms | D aparece como `timeout`. A consulta termina perto dos 5 s no modo concorrente e perto de 6,5 s no sequencial (3 × 0,5 s + 5 s) |
 
-- **Verificação automática:** em cada execução o experimento confere três coisas:
+- **Verificação automática:** em cada execução o experimento confere:
   1. os postos saudáveis responderam com `sucesso`;
   2. o posto afetado recebeu o status esperado;
-  3. o `menor_preco` considera só quem respondeu.
+  3. o `menor_preco` considera só quem respondeu;
+  4. no cenário C, a consulta não passou de 8 s (timeout de 5 s + 3 s de folga), o que mostra que o agregador não ficou esperando o posto travado.
   
   Ao final imprime PASS ou FAIL por cenário. Se algum falhar, o processo termina com código 1.
 - **Saídas:** `exp_5_indisponibilidade.json`, `exp_5_tempos.png` (tempo por cenário e estratégia) e `exp_5_status.png` (status de cada posto por cenário).

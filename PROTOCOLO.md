@@ -87,7 +87,8 @@ Cidade não atendida por esse posto (no estado informado):
   "posto": "C",
   "estado": "PA",
   "cidade": "Belém",
-  "status": "nao_atendida"
+  "status": "nao_atendida",
+  "id": "81e284c6"
 }
 ```
 
@@ -96,9 +97,12 @@ Erro na requisição (estado ou combustível inválido, etc.):
 {
   "posto": "A",
   "status": "erro",
-  "mensagem": "combustível inválido"
+  "mensagem": "combustível inválido: 'querosene'",
+  "id": "81e284c6"
 }
 ```
+
+Em todas as respostas do posto, o `id` só aparece se veio na requisição.
 
 ### Resposta agregador → cliente
 
@@ -113,12 +117,12 @@ Erro na requisição (estado ou combustível inválido, etc.):
   },
   "resultados": [
     {"posto": "B", "estado": "PA", "cidade": "Belém", "combustivel": "gasolina_comum",
-     "preco": 6.09, "status": "sucesso"},
+     "preco": 6.09, "status": "sucesso", "id": "81e284c6"},
     {"posto": "A", "estado": "PA", "cidade": "Belém", "combustivel": "gasolina_comum",
-     "preco": 6.19, "status": "sucesso"}
+     "preco": 6.19, "status": "sucesso", "id": "81e284c6"}
   ],
   "indisponiveis": [
-    {"posto": "C", "estado": "PA", "cidade": "Belém", "status": "nao_atendida"},
+    {"posto": "C", "estado": "PA", "cidade": "Belém", "status": "nao_atendida", "id": "81e284c6"},
     {"posto": "D", "status": "timeout"}
   ],
   "menor_preco": {"posto": "B", "preco": 6.09},
@@ -128,10 +132,10 @@ Erro na requisição (estado ou combustível inválido, etc.):
 
 - `resultados` sempre vem ordenado em ordem crescente de preço. Cada item é a resposta do posto repassada sem alteração.
 - `tempo_ms` é um número decimal (milissegundos, uma casa), medido pelo agregador do início ao fim da consulta aos postos.
-- `indisponiveis` lista postos que não participam do ranking (não atendem à cidade, estão fora do ar, excederam o timeout ou responderam com erro).
+- `indisponiveis` lista postos que não participam do ranking (não atendem à cidade, estão fora do ar, excederam o timeout ou responderam com erro). Quando o posto respondeu, o item é a resposta dele; quando não respondeu, o agregador cria o item só com `posto`, `status` e, se houver, `mensagem` (sem `id`).
 - `menor_preco` é `null` se nenhum posto responder com sucesso.
 
-Se a requisição for inválida (estado, combustível, cidade ou estratégia), o agregador responde só com o erro, sem consultar os postos:
+Se a requisição for inválida (estado, combustível, cidade ou estratégia inválidos, estratégia ausente ou mensagem que não é um objeto JSON), o agregador responde só com o erro, sem consultar os postos. O `id` aparece se veio na requisição:
 
 ```json
 {"status": "erro", "mensagem": "estado inválido: 'SP' (aceitos: AC, AM, AP, PA, RO, RR, TO)", "id": "81e284c6"}
@@ -141,11 +145,12 @@ Se a requisição for inválida (estado, combustível, cidade ou estratégia), o
 
 | Situação | Detectada por | Resposta do agregador ao cliente |
 | --- | --- | --- |
-| Posto não aceita conexão TCP ou fecha a conexão sem responder | `ConnectionRefusedError` / `ConnectionError` | entrada em `indisponiveis` com `status: "indisponivel"` |
+| Posto não aceita conexão TCP ou fecha a conexão sem responder (o posto fecha sem responder quando recebe JSON mal formado) | `ConnectionRefusedError` / `ConnectionError` | entrada em `indisponiveis` com `status: "indisponivel"` e a `mensagem` do erro |
 | Posto demora mais de 5 s (na conexão ou na leitura da resposta) | `socket.timeout` | `indisponiveis` com `status: "timeout"` |
 | Posto responde `status: "erro"` ou JSON inválido | resposta do posto | `indisponiveis` com `status: "erro"` |
-| JSON mal formado vindo do cliente | `json.JSONDecodeError` | fecha a conexão; log no servidor |
-| Estado, combustível, cidade ou estratégia inválidos | validação na entrada | retorna `{"status": "erro", "mensagem": "..."}` ao cliente |
+| JSON mal formado vindo do cliente | `json.JSONDecodeError` | fecha a conexão sem responder; log no servidor |
+| JSON válido que não é um objeto (ex.: `[1, 2]`) | validação na entrada | `{"status": "erro", "mensagem": "a mensagem deve ser um objeto JSON"}` |
+| Estado, combustível, cidade ou estratégia inválidos, estratégia ausente ou `id` inválido | validação na entrada | `{"status": "erro", "mensagem": "..."}` |
 
 ## Encerramento de conexão
 

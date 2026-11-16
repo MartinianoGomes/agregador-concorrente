@@ -37,7 +37,11 @@ Usamos [Conventional Commits](https://www.conventionalcommits.org/pt-br/):
 
 ## Estilo de código
 
-- **Python:** PEP 8. Rodem `python -m black src/ experimentos/ tests/` antes de abrir PR. Configurem a linha máxima em 100 caracteres.
+- **Python:** PEP 8, com linha máxima de 100 caracteres. Para formatar, instalem o black (`pip install black`, fica fora do `requirements.txt`) e rodem antes de abrir PR:
+  ```bash
+  python -m black --line-length 100 src/ experimentos/ tests/ scripts/ docs/ interface_grafica.py
+  ```
+  Sem o `--line-length 100`, o black usa 88 caracteres.
 - **Imports:** agrupem em três blocos (stdlib, terceiros, locais), separados por uma linha em branco.
 - **Docstrings:** obrigatórias em módulos e funções públicas. Use o estilo PEP 257.
 - **Type hints:** use sempre que possível.
@@ -46,7 +50,7 @@ Usamos [Conventional Commits](https://www.conventionalcommits.org/pt-br/):
 
 Já listados no `.gitignore`:
 - `data/anp_bruto.csv` e `data/anp_posto_*.csv` (cada um gera localmente)
-- `resultados/*.json`, `resultados/*.csv`, `resultados/*.png`
+- `resultados/*.json`, `resultados/*.csv`, `resultados/*.png`, `resultados/*.txt` e `resultados/logs/`
 - Qualquer `.venv/`, `__pycache__/`, `.env`
 
 ## Comunicação do grupo
