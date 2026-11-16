@@ -3,7 +3,7 @@
 Sobe 4 postos + agregador, executa N consultas em modo sequencial para uma
 mesma (estado, cidade, combustível) e grava os tempos em resultados/exp_1_sequencial.json.
 
-    python -m experimentos.exp_1_sequencial [--rodadas 10] [--latencia-ms 0]
+    python -m experimentos.exp_1_sequencial [--rodadas 10] [--latencia-ms 200]
 """
 
 from __future__ import annotations

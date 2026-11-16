@@ -1,7 +1,8 @@
 """Infraestrutura compartilhada pelos experimentos.
 
-- `Ambiente`: sobe 4 postos + agregador como processos independentes (em portas
-  alternativas, para não colidir com um `run_all` aberto) e derruba tudo ao sair.
+- `Ambiente`: sobe 4 postos + agregador como processos independentes, em portas
+  livres escolhidas na hora (não colide com o `run_all` nem com outro experimento
+  rodando ao mesmo tempo), e derruba tudo ao sair.
 - `AmbienteExterno`: usa um agregador já em execução (ex.: o do `run_all`).
 - Estatísticas, tabelas em texto, gravação de JSON e helpers de gráfico.
 """
@@ -12,6 +13,7 @@ import argparse
 import json
 import math
 import os
+import platform
 import socket
 import statistics
 import subprocess
@@ -30,9 +32,7 @@ RESULTADOS = RAIZ / "resultados"
 LOGS = RESULTADOS / "logs"
 
 HOST = "127.0.0.1"
-PORTA_AGREGADOR = 7000
 NOMES_POSTOS = ("A", "B", "C", "D")
-PORTAS_POSTOS = {"A": 7001, "B": 7002, "C": 7003, "D": 7004}
 
 ESTADO_PADRAO = "PA"
 CIDADE_PADRAO = "Belém"
@@ -78,6 +78,13 @@ def validar_dados(estado: str, cidade: str, combustivel: str) -> None:
 
 
 # ------------------------------------------------------------------ ambiente
+def _porta_livre() -> int:
+    """Pede ao sistema operacional uma porta TCP livre em HOST."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, 0))
+        return s.getsockname()[1]
+
+
 def _porta_aberta(porta: int) -> bool:
     try:
         with socket.create_connection((HOST, porta), timeout=0.3):
@@ -104,34 +111,31 @@ class Ambiente:
         self.procs: dict[str, subprocess.Popen] = {}
         self._logs: list[Any] = []
         self.host = HOST
-        self.porta = PORTA_AGREGADOR
+        # portas escolhidas na hora: experimentos podem rodar em paralelo entre si e com o run_all
+        self.portas_postos = {n: _porta_livre() for n in NOMES_POSTOS}
+        self.porta = _porta_livre()
 
     # -- ciclo de vida
     def __enter__(self) -> "Ambiente":
         LOGS.mkdir(parents=True, exist_ok=True)
         try:
-            for porta in (PORTA_AGREGADOR, *PORTAS_POSTOS.values()):
-                if _porta_aberta(porta):
-                    raise RuntimeError(
-                        f"Porta {porta} já em uso — há processos de um experimento anterior?"
-                    )
             for nome in self.ativos:
                 self._subir(
                     nome,
                     [
                         "-m", "src.posto", "--nome", nome, "--host", HOST,
-                        "--porta", str(PORTAS_POSTOS[nome]),
+                        "--porta", str(self.portas_postos[nome]),
                         "--anp", str(DATA / f"anp_posto_{nome.lower()}.csv"),
                         "--latencia-ms", str(self.latencias[nome]),
                     ],
                 )
-            args = ["-m", "src.agregador", "--host", HOST, "--porta", str(PORTA_AGREGADOR)]
+            args = ["-m", "src.agregador", "--host", HOST, "--porta", str(self.porta)]
             for nome in NOMES_POSTOS:  # o agregador conhece os 4, mesmo se algum estiver fora
-                args += ["--posto", f"{nome}:{HOST}:{PORTAS_POSTOS[nome]}"]
+                args += ["--posto", f"{nome}:{HOST}:{self.portas_postos[nome]}"]
             self._subir("AGREGADOR", args)
             for nome in self.ativos:
-                self._esperar(nome, PORTAS_POSTOS[nome])
-            self._esperar("AGREGADOR", PORTA_AGREGADOR)
+                self._esperar(nome, self.portas_postos[nome])
+            self._esperar("AGREGADOR", self.porta)
         except BaseException:
             self.parar()
             raise
@@ -224,10 +228,34 @@ def tabela(cabecalho: list[str], linhas: list[list[Any]]) -> str:
     return "\n".join([fmt(cabecalho), sep, *[fmt(l) for l in cols[1:]]])
 
 
+def _commit_git() -> str | None:
+    """Commit atual (com sufixo "-modificado" se houver mudanças não commitadas)."""
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=RAIZ, text=True,
+                                capture_output=True, check=True, timeout=5).stdout.strip()
+        sujo = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=RAIZ,
+                              text=True, capture_output=True, check=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return f"{commit}-modificado" if sujo else commit
+
+
+def metadados() -> dict[str, Any]:
+    """Informações para reproduzir a medição: versão do código e da máquina."""
+    return {
+        "protocolo_versao": p.PROTOCOLO_VERSAO,
+        "commit": _commit_git(),
+        "python": platform.python_version(),
+        "sistema": platform.platform(),
+        "cpus": os.cpu_count(),
+        "timeout_posto_s": p.TIMEOUT_POSTO_S,
+    }
+
+
 def salvar_json(nome: str, dados: dict[str, Any]) -> Path:
     RESULTADOS.mkdir(exist_ok=True)
     caminho = RESULTADOS / f"{nome}.json"
-    dados = {"experimento": nome, "timestamp": int(time.time()), **dados}
+    dados = {"experimento": nome, "timestamp": int(time.time()), "ambiente": metadados(), **dados}
     caminho.write_text(json.dumps(dados, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"→ dados: {caminho.relative_to(RAIZ)}")
     return caminho

@@ -21,6 +21,24 @@ ARQUIVOS = {
 }
 
 
+# Parâmetros que precisam ser iguais nos dois experimentos para a comparação valer.
+PARAMETROS = ("estado", "cidade", "combustivel", "latencia_ms", "n_rodadas")
+
+
+def verificar_compatibilidade(dados: dict[str, dict]) -> None:
+    seq, conc = (dados[e] for e in ARQUIVOS)
+    diferencas = [
+        f"  {k}: exp. 1 = {seq.get(k)!r}, exp. 2 = {conc.get(k)!r}"
+        for k in PARAMETROS if seq.get(k) != conc.get(k)
+    ]
+    if diferencas:
+        raise SystemExit(
+            "Os Experimentos 1 e 2 rodaram com parâmetros diferentes; a comparação não vale:\n"
+            + "\n".join(diferencas)
+            + "\nRode os dois de novo com os mesmos parâmetros."
+        )
+
+
 def main() -> None:
     dados = {}
     for estrategia, nome in ARQUIVOS.items():
@@ -28,6 +46,7 @@ def main() -> None:
         if not caminho.exists():
             raise SystemExit(f"Falta {caminho.name}. Rode o experimento correspondente antes.")
         dados[estrategia] = json.loads(caminho.read_text(encoding="utf-8"))
+    verificar_compatibilidade(dados)
 
     plt = c.pyplot()
     ests = list(ARQUIVOS)

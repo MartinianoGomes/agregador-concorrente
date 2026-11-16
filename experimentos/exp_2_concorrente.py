@@ -3,7 +3,7 @@
 Mesmo formato do Experimento 1, em modo concorrente (uma thread por posto).
 Gráficos comparativos 1 × 2: `python -m experimentos.plot_comparativo`.
 
-    python -m experimentos.exp_2_concorrente [--rodadas 10] [--latencia-ms 0]
+    python -m experimentos.exp_2_concorrente [--rodadas 10] [--latencia-ms 200]
 """
 
 from __future__ import annotations

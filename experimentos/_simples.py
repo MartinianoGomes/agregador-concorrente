@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from experimentos import _comum as c
 
+# Sem atraso os postos respondem em ~1 ms e a comparação mede só ruído; 200 ms
+# simula uma rede real e é a mesma latência usada no Experimento 4.
+LATENCIA_PADRAO_MS = 200
+
 
 def executar(numero: int, nome: str, estrategia: str) -> None:
     ap = c.parser_base(f"Experimento {numero} — consulta {estrategia}.")
     ap.add_argument("--rodadas", type=int, default=10)
-    ap.add_argument("--latencia-ms", type=int, default=0, help="latência artificial por posto")
+    ap.add_argument(
+        "--latencia-ms", type=int, default=LATENCIA_PADRAO_MS,
+        help=f"atraso artificial de cada posto, em ms (padrão {LATENCIA_PADRAO_MS}; 0 = sem atraso)",
+    )
     ap.add_argument(
         "--externo", action="store_true",
         help="usa o agregador já em execução em localhost:5000 (ignora --latencia-ms)",
