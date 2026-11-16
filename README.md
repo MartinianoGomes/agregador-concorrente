@@ -92,15 +92,21 @@ python -m src.cliente --host localhost --porta 5000
 
 ## Rodar os experimentos
 
+Cada experimento **sobe e derruba sozinho** os 4 postos e o agregador (portas 7000–7004, para não colidir com o `run_all`). Basta ter os CSVs em `data/` e `matplotlib` instalado.
+
 ```bash
 python -m experimentos.exp_1_sequencial
 python -m experimentos.exp_2_concorrente
-python -m experimentos.exp_3_latencia
+python -m experimentos.plot_comparativo        # gráficos 1 × 2
+python -m experimentos.exp_3_latencia          # latência × tempo, speedup
 python -m experimentos.exp_4_multiplos_clientes
-python -m experimentos.exp_5_indisponibilidade
+python -m experimentos.exp_5_indisponibilidade # cenários A, B e C com PASS/FAIL
+python -m experimentos.executar_todos          # tudo em sequência
 ```
 
-Os tempos e logs vão para `resultados/`.
+Opções comuns: `--cidade`, `--combustivel` (padrão: Belém / gasolina_comum). Os exps. 1 e 2 aceitam `--externo` para usar o agregador do `run_all` (porta 5000).
+
+Saída em `resultados/`: JSON com os dados brutos e estatísticas, PNGs dos gráficos e `logs/` dos processos.
 
 ## Divisão de responsabilidades
 
