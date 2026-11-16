@@ -2,7 +2,7 @@
 
 Cada instância representa uma rede com pontos de venda em cidades da Região
 Norte. A base de preços é carregada no startup do processo e indexada por
-(cidade_normalizada, combustível) para resposta em tempo constante.
+(estado, cidade_normalizada, combustível) para resposta em tempo constante.
 
 Uso:
     python -m src.posto --nome A --porta 6001 --anp data/anp_posto_a.csv
@@ -31,8 +31,12 @@ log = logging.getLogger("posto")
 
 
 # ---------- Carregamento da base ----------
-def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
-    """Carrega os preços mais recentes de cada estabelecimento."""
+def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str, str], float]:
+    """Carrega os preços mais recentes de cada estabelecimento.
+
+    Devolve um dict `(estado, cidade_normalizada, combustível) → preço`, em que o
+    preço é o menor entre as últimas coletas dos estabelecimentos daquela cidade.
+    """
 
     mapa_combustiveis = {
         "GASOLINA": "gasolina_comum",
@@ -41,13 +45,14 @@ def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
         "DIESEL S10": "diesel_s10",
     }
 
-    # Última coleta de cada estabelecimento, cidade e combustível.
+    # Última coleta de cada estabelecimento, estado, cidade e combustível.
     ultimas_coletas = {}
 
-    with csv_path.open(encoding="utf-8", newline="") as arquivo:
+    with csv_path.open(encoding="utf-8-sig", newline="") as arquivo:
         leitor = csv.DictReader(arquivo, delimiter=";")
 
         for linha in leitor:
+            estado = p.normalizar_estado(linha["Estado - Sigla"])
             cidade = p.normalizar_cidade(linha["Municipio"])
             produto = linha["Produto"].strip().upper()
             combustivel = mapa_combustiveis.get(produto)
@@ -67,7 +72,7 @@ def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
                 )
                 continue
 
-            chave = (cnpj, cidade, combustivel)
+            chave = (cnpj, estado, cidade, combustivel)
 
             if chave not in ultimas_coletas:
                 ultimas_coletas[chave] = (data, preco)
@@ -78,10 +83,10 @@ def carregar_base_precos(csv_path: Path) -> dict[tuple[str, str], float]:
                     ultimas_coletas[chave] = (data, preco)
 
     # Menor preço entre as últimas coletas dos estabelecimentos.
-    base: dict[tuple[str, str], float] = {}
+    base: dict[tuple[str, str, str], float] = {}
 
-    for (_, cidade, combustivel), (_, preco) in ultimas_coletas.items():
-        chave = (cidade, combustivel)
+    for (_, estado, cidade, combustivel), (_, preco) in ultimas_coletas.items():
+        chave = (estado, cidade, combustivel)
 
         if chave not in base or preco < base[chave]:
             base[chave] = preco
@@ -95,7 +100,7 @@ def tratar_conexao(
     addr: tuple[str, int],
     *,
     nome_posto: str,
-    base: dict[tuple[str, str], float],
+    base: dict[tuple[str, str, str], float],
     latencia_ms: int,
 ) -> None:
     """Lê uma requisição, consulta a base e responde."""
@@ -112,29 +117,34 @@ def tratar_conexao(
             p.enviar_json(conn, resposta)
             return
 
+        estado = p.normalizar_estado(msg["estado"])
         cidade_norm = p.normalizar_cidade(msg["cidade"])
         combustivel = msg["combustivel"]
 
         if latencia_ms > 0:
             time.sleep(latencia_ms / 1000.0)
 
-        preco = base.get((cidade_norm, combustivel))
+        preco = base.get((estado, cidade_norm, combustivel))
         if preco is None:
             resposta = {
                 "posto": nome_posto,
+                "estado": estado,
                 "cidade": msg["cidade"],
                 "status": p.STATUS_NAO_ATENDIDA,
             }
         else:
             resposta = {
                 "posto": nome_posto,
+                "estado": estado,
                 "cidade": msg["cidade"],
                 "combustivel": combustivel,
                 "preco": preco,
                 "status": p.STATUS_SUCESSO,
             }
         p.enviar_json(conn, resposta)
-        log.info("[%s] %s %s -> %s", nome_posto, cidade_norm, combustivel, resposta["status"])
+        log.info(
+            "[%s] %s/%s %s -> %s", nome_posto, cidade_norm, estado, combustivel, resposta["status"]
+        )
 
 
 # ---------- Server loop ----------

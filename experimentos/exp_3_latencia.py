@@ -21,15 +21,15 @@ from src import protocolo as p
 ESTRATEGIAS = (p.ESTRATEGIA_SEQUENCIAL, p.ESTRATEGIA_CONCORRENTE)
 
 
-def medir(latencia: int, cidade: str, combustivel: str, rodadas: int) -> dict:
+def medir(latencia: int, estado: str, cidade: str, combustivel: str, rodadas: int) -> dict:
     tempos: dict[str, list[float]] = {e: [] for e in ESTRATEGIAS}
     degradadas = 0
     with c.Ambiente(latencia, tag=f"exp3_L{latencia}") as amb:
         for e in ESTRATEGIAS:  # aquecimento
-            amb.consultar(cidade, combustivel, e)
+            amb.consultar(estado, cidade, combustivel, e)
         for _ in range(rodadas):  # alterna as estratégias para reduzir viés de ordem
             for e in ESTRATEGIAS:
-                resp = amb.consultar(cidade, combustivel, e)
+                resp = amb.consultar(estado, cidade, combustivel, e)
                 tempos[e].append(float(resp["tempo_ms"]))
                 degradadas += len(resp["indisponiveis"])
     return {"tempos": tempos, "indisponiveis_total": degradadas}
@@ -87,12 +87,12 @@ def main() -> None:
     ap.add_argument("--latencias", type=int, nargs="+", default=[0, 100, 250, 500, 1000, 2000])
     ap.add_argument("--rodadas", type=int, default=5)
     args = ap.parse_args()
-    c.validar_dados(args.cidade, args.combustivel)
+    c.validar_dados(args.estado, args.cidade, args.combustivel)
 
     brutos, resumo = {}, {}
     for L in args.latencias:
         print(f"\n>>> latência {L} ms por posto …")
-        r = medir(L, args.cidade, args.combustivel, args.rodadas)
+        r = medir(L, args.estado, args.cidade, args.combustivel, args.rodadas)
         brutos[L] = r
         resumo[L] = {e: c.estatisticas(r["tempos"][e]) for e in ESTRATEGIAS}
         if r["indisponiveis_total"]:
@@ -106,7 +106,7 @@ def main() -> None:
         ["L (ms)", "seq média", "seq desvio", "conc média", "conc desvio", "speedup"], linhas))
 
     c.salvar_json("exp_3_latencia", {
-        "cidade": args.cidade, "combustivel": args.combustivel, "rodadas": args.rodadas,
+        "estado": args.estado, "cidade": args.cidade, "combustivel": args.combustivel, "rodadas": args.rodadas,
         "latencias_ms": args.latencias,
         "resultados": {str(L): {"tempos_ms": brutos[L]["tempos"], "estatisticas": resumo[L],
                                 "indisponiveis_total": brutos[L]["indisponiveis_total"]}

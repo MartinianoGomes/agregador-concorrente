@@ -32,7 +32,8 @@ def main() -> None:
     plt = c.pyplot()
     ests = list(ARQUIVOS)
     ref = dados[ests[0]]
-    sub = f"{ref['combustivel']} em {ref['cidade']}, latência {ref.get('latencia_ms')} ms/posto"
+    local = f"{ref['cidade']}/{ref['estado']}" if ref.get("estado") else ref["cidade"]
+    sub = f"{ref['combustivel']} em {local}, latência {ref.get('latencia_ms')} ms/posto"
 
     # 1) barras média ± desvio
     fig, ax = plt.subplots(figsize=(5.5, 4))

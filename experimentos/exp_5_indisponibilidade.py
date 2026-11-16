@@ -31,7 +31,7 @@ from src import protocolo as p
 ESTRATEGIAS = (p.ESTRATEGIA_SEQUENCIAL, p.ESTRATEGIA_CONCORRENTE)
 ATRASO_KILL_S = 0.5
 
-# nome -> (título, kwargs do Ambiente, posto afetado, status esperado, descrição)
+# nome -> (título, kwargs do Ambiente, posto afetado, status esperado)
 CENARIOS = {
     "0_referencia": ("0. Referência", dict(latencia_ms=500), None, None),
     "A_fora_do_ar": ("A. Fora do ar antes", dict(latencia_ms=500, ativos="ABC"), "D",
@@ -64,13 +64,13 @@ def verificar(resp: dict, afetado: str | None, esperado: str | None, ms: float, 
     return problemas
 
 
-def executar(cen: str, estrategia: str, cidade: str, combustivel: str) -> dict:
+def executar(cen: str, estrategia: str, estado: str, cidade: str, combustivel: str) -> dict:
     titulo, kw, afetado, esperado = CENARIOS[cen]
     with c.Ambiente(tag=f"exp5_{cen}_{estrategia}", **kw) as amb:
         caixa: dict = {}
 
         def consulta() -> None:
-            caixa["resp"] = amb.consultar(cidade, combustivel, estrategia)
+            caixa["resp"] = amb.consultar(estado, cidade, combustivel, estrategia)
 
         t0 = time.perf_counter()
         th = threading.Thread(target=consulta)
@@ -132,13 +132,13 @@ def graficos(resultados: list[dict]) -> None:
 def main() -> None:
     ap = c.parser_base("Experimento 5 — indisponibilidade de um posto.")
     args = ap.parse_args()
-    c.validar_dados(args.cidade, args.combustivel)
+    c.validar_dados(args.estado, args.cidade, args.combustivel)
 
     resultados = []
     for cen in CENARIOS:
         for e in ESTRATEGIAS:
             print(f">>> {CENARIOS[cen][0]} — {e} …")
-            r = executar(cen, e, args.cidade, args.combustivel)
+            r = executar(cen, e, args.estado, args.cidade, args.combustivel)
             resultados.append(r)
             print(f"    {r['tempo_cliente_ms']} ms — {'OK' if r['aprovado'] else 'FALHOU: ' + '; '.join(r['problemas'])}")
 
@@ -150,7 +150,7 @@ def main() -> None:
                        "PASS" if r["aprovado"] else "FAIL"])
     print("\n" + c.tabela(["cenário", "estratégia", "tempo (ms)", "indisponíveis", "menor", "resultado"], linhas))
 
-    c.salvar_json("exp_5_indisponibilidade", {"cidade": args.cidade, "combustivel": args.combustivel,
+    c.salvar_json("exp_5_indisponibilidade", {"estado": args.estado, "cidade": args.cidade, "combustivel": args.combustivel,
                                               "resultados": resultados})
     graficos(resultados)
     if not all(r["aprovado"] for r in resultados):

@@ -12,7 +12,7 @@ import unicodedata
 from typing import Any
 
 # ---------- Constantes ----------
-PROTOCOLO_VERSAO = "v1"
+PROTOCOLO_VERSAO = "v2"
 
 ENCODING = "utf-8"
 BUFFER_SIZE = 4096
@@ -21,6 +21,9 @@ TIMEOUT_CLIENTE_S = 30.0  # timeout do cliente esperando o agregador
 
 # Operações
 OP_CONSULTAR = "consultar"
+
+# Estados (UF) da Região Norte atendidos
+ESTADOS = ("AC", "AM", "AP", "PA", "RO", "RR", "TO")
 
 # Combustíveis aceitos
 COMBUSTIVEIS = ("gasolina_comum", "gasolina_aditivada", "etanol", "diesel_s10")
@@ -83,6 +86,15 @@ def normalizar_cidade(nome: str) -> str:
     return s.lower().strip()
 
 
+def normalizar_estado(sigla: str) -> str:
+    """Normaliza a sigla de um estado (UF): sem espaços nas pontas e em caixa alta.
+
+    >>> normalizar_estado(" pa ")
+    'PA'
+    """
+    return sigla.strip().upper()
+
+
 # ---------- Validação ----------
 def validar_requisicao_consulta(msg: dict[str, Any]) -> tuple[bool, str]:
     """Verifica se uma requisição `consultar` é válida.
@@ -91,6 +103,9 @@ def validar_requisicao_consulta(msg: dict[str, Any]) -> tuple[bool, str]:
     """
     if msg.get("operacao") != OP_CONSULTAR:
         return False, f"operação desconhecida: {msg.get('operacao')!r}"
+    estado = msg.get("estado")
+    if not isinstance(estado, str) or normalizar_estado(estado) not in ESTADOS:
+        return False, f"estado inválido: {estado!r} (aceitos: {', '.join(ESTADOS)})"
     if msg.get("combustivel") not in COMBUSTIVEIS:
         return False, f"combustível inválido: {msg.get('combustivel')!r}"
     if not isinstance(msg.get("cidade"), str) or not msg["cidade"].strip():

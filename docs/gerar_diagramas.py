@@ -167,8 +167,8 @@ def sequencia() -> None:
         ax.add_patch(Rectangle((X[x] - 0.12, y - 0.55), 0.24, 0.55, fc="#FDF1E7", ec=LARANJA, zorder=2))
         ax.text(X[x] + 0.28, y - 0.27, texto, fontsize=8.3, va="center", color=LARANJA)
 
-    msg("Usuário", "Cliente", 10.9, "informa cidade, combustível\ne estratégia", dy=0.05)
-    msg("Cliente", "Agregador", 10.0, "consultar {combustivel, cidade, estrategia}", dy=0.05)
+    msg("Usuário", "Cliente", 10.9, "informa estado, cidade,\ncombustível e estratégia", dy=0.05)
+    msg("Cliente", "Agregador", 10.0, "consultar {estado, cidade, combustivel, estrategia}", dy=0.05)
     auto("Agregador", 9.6, "valida requisição e inicia cronômetro")
 
     # fragmento par (concorrente)

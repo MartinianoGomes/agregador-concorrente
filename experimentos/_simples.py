@@ -15,10 +15,10 @@ def executar(numero: int, nome: str, estrategia: str) -> None:
     )
     args = ap.parse_args()
 
-    c.validar_dados(args.cidade, args.combustivel)
+    c.validar_dados(args.estado, args.cidade, args.combustivel)
     amb = c.AmbienteExterno() if args.externo else c.Ambiente(args.latencia_ms, tag=nome)
     with amb:
-        tempos = c.rodar_rodadas(amb, args.cidade, args.combustivel, estrategia, args.rodadas)
+        tempos = c.rodar_rodadas(amb, args.estado, args.cidade, args.combustivel, estrategia, args.rodadas)
 
     est = c.estatisticas(tempos)
     for i, t in enumerate(tempos, 1):
@@ -29,7 +29,7 @@ def executar(numero: int, nome: str, estrategia: str) -> None:
         nome,
         {
             "estrategia": estrategia,
-            "cidade": args.cidade,
+            "estado": args.estado, "cidade": args.cidade,
             "combustivel": args.combustivel,
             "latencia_ms": None if args.externo else args.latencia_ms,
             "n_rodadas": args.rodadas,

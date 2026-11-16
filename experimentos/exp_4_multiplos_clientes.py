@@ -26,12 +26,12 @@ from src import protocolo as p
 ESTRATEGIAS = (p.ESTRATEGIA_SEQUENCIAL, p.ESTRATEGIA_CONCORRENTE)
 
 
-def _cliente(amb, cidade, combustivel, estrategia, barreira, saida: list) -> None:
+def _cliente(amb, estado, cidade, combustivel, estrategia, barreira, saida: list) -> None:
     barreira.wait()
     t0 = time.perf_counter()
     reg = {"t0": t0, "t1": t0, "ms": 0.0, "agregador_ms": None, "falha": None, "degradada": False}
     try:
-        resp = amb.consultar(cidade, combustivel, estrategia)
+        resp = amb.consultar(estado, cidade, combustivel, estrategia)
         reg["t1"] = time.perf_counter()
         if "resultados" not in resp:
             reg["falha"] = f"resposta inesperada: {resp.get('mensagem') or resp.get('status')}"
@@ -45,10 +45,10 @@ def _cliente(amb, cidade, combustivel, estrategia, barreira, saida: list) -> Non
     saida.append(reg)
 
 
-def lote(amb, n: int, cidade: str, combustivel: str, estrategia: str) -> dict:
+def lote(amb, n: int, estado: str, cidade: str, combustivel: str, estrategia: str) -> dict:
     barreira = threading.Barrier(n)
     saida: list[dict] = []
-    ths = [threading.Thread(target=_cliente, args=(amb, cidade, combustivel, estrategia, barreira, saida))
+    ths = [threading.Thread(target=_cliente, args=(amb, estado, cidade, combustivel, estrategia, barreira, saida))
            for _ in range(n)]
     for t in ths:
         t.start()
@@ -141,19 +141,19 @@ def main() -> None:
     ap.add_argument("--repeticoes", type=int, default=3)
     ap.add_argument("--latencia-ms", type=int, default=200)
     args = ap.parse_args()
-    c.validar_dados(args.cidade, args.combustivel)
+    c.validar_dados(args.estado, args.cidade, args.combustivel)
 
     resumo: dict[int, dict] = {}
     brutos: dict[str, dict] = {}
     with c.Ambiente(args.latencia_ms, tag="exp4") as amb:
         for e in ESTRATEGIAS:  # aquecimento
-            amb.consultar(args.cidade, args.combustivel, e)
+            amb.consultar(args.estado, args.cidade, args.combustivel, e)
         for n in args.clientes:
             resumo[n] = {}
             for e in ESTRATEGIAS:
                 regs, vazoes = [], []
                 for _ in range(args.repeticoes):
-                    r = lote(amb, n, args.cidade, args.combustivel, e)
+                    r = lote(amb, n, args.estado, args.cidade, args.combustivel, e)
                     regs += r["regs"]
                     vazoes.append(n / r["duracao_s"])
                 tempos = [r["ms"] for r in regs if r["falha"] is None]
@@ -183,7 +183,7 @@ def main() -> None:
                            "degradadas"], linhas))
 
     c.salvar_json("exp_4_multiplos_clientes", {
-        "cidade": args.cidade, "combustivel": args.combustivel,
+        "estado": args.estado, "cidade": args.cidade, "combustivel": args.combustivel,
         "latencia_ms": args.latencia_ms, "repeticoes": args.repeticoes,
         "clientes": args.clientes,
         "resumo": {str(n): resumo[n] for n in args.clientes},

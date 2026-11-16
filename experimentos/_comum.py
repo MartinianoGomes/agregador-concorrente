@@ -34,6 +34,7 @@ PORTA_AGREGADOR = 7000
 NOMES_POSTOS = ("A", "B", "C", "D")
 PORTAS_POSTOS = {"A": 7001, "B": 7002, "C": 7003, "D": 7004}
 
+ESTADO_PADRAO = "PA"
 CIDADE_PADRAO = "Belém"
 COMBUSTIVEL_PADRAO = "gasolina_comum"
 
@@ -50,17 +51,18 @@ ROTULO = {
 # ---------------------------------------------------------------- argumentos
 def parser_base(descricao: str) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=descricao)
+    ap.add_argument("--estado", default=ESTADO_PADRAO, type=p.normalizar_estado, choices=p.ESTADOS)
     ap.add_argument("--cidade", default=CIDADE_PADRAO)
     ap.add_argument("--combustivel", default=COMBUSTIVEL_PADRAO, choices=p.COMBUSTIVEIS)
     return ap
 
 
-def validar_dados(cidade: str, combustivel: str) -> None:
-    """Garante que os 4 recortes existem e que todos atendem (cidade, combustível).
+def validar_dados(estado: str, cidade: str, combustivel: str) -> None:
+    """Garante que os 4 recortes existem e que todos atendem (estado, cidade, combustível).
 
     Sem isso um `nao_atendida` falsearia as medições.
     """
-    chave = (p.normalizar_cidade(cidade), combustivel)
+    chave = (p.normalizar_estado(estado), p.normalizar_cidade(cidade), combustivel)
     for nome in NOMES_POSTOS:
         csv_path = DATA / f"anp_posto_{nome.lower()}.csv"
         if not csv_path.exists():
@@ -70,8 +72,8 @@ def validar_dados(cidade: str, combustivel: str) -> None:
             )
         if chave not in carregar_base_precos(csv_path):
             raise SystemExit(
-                f"O posto {nome} não atende {cidade!r}/{combustivel}. "
-                "Escolha outra combinação com --cidade/--combustivel."
+                f"O posto {nome} não atende {cidade!r}/{estado} ({combustivel}). "
+                "Escolha outra combinação com --estado/--cidade/--combustivel."
             )
 
 
@@ -178,8 +180,8 @@ class Ambiente:
         self._logs.clear()
 
     # -- consulta
-    def consultar(self, cidade: str, combustivel: str, estrategia: str) -> dict:
-        return _consultar(self.host, self.porta, cidade, combustivel, estrategia)
+    def consultar(self, estado: str, cidade: str, combustivel: str, estrategia: str) -> dict:
+        return _consultar(self.host, self.porta, estado, cidade, combustivel, estrategia)
 
 
 class AmbienteExterno:
@@ -194,8 +196,8 @@ class AmbienteExterno:
     def __exit__(self, *exc: Any) -> None:
         pass
 
-    def consultar(self, cidade: str, combustivel: str, estrategia: str) -> dict:
-        return _consultar(self.host, self.porta, cidade, combustivel, estrategia)
+    def consultar(self, estado: str, cidade: str, combustivel: str, estrategia: str) -> dict:
+        return _consultar(self.host, self.porta, estado, cidade, combustivel, estrategia)
 
 
 # -------------------------------------------------------------- estatísticas
@@ -232,13 +234,13 @@ def salvar_json(nome: str, dados: dict[str, Any]) -> Path:
 
 
 def rodar_rodadas(
-    amb: Any, cidade: str, combustivel: str, estrategia: str, rodadas: int
+    amb: Any, estado: str, cidade: str, combustivel: str, estrategia: str, rodadas: int
 ) -> list[float]:
     """Uma rodada de aquecimento (descartada) + `rodadas` medições de tempo_ms."""
-    amb.consultar(cidade, combustivel, estrategia)
+    amb.consultar(estado, cidade, combustivel, estrategia)
     tempos = []
     for _ in range(rodadas):
-        resp = amb.consultar(cidade, combustivel, estrategia)
+        resp = amb.consultar(estado, cidade, combustivel, estrategia)
         tempos.append(float(resp["tempo_ms"]))
     return tempos
 

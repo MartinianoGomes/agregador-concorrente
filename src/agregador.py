@@ -45,6 +45,7 @@ class PostoEndereco:
 # ---------- Consulta a um único posto ----------
 def consultar_posto(
     posto: PostoEndereco,
+    estado: str,
     combustivel: str,
     cidade: str,
 ) -> dict:
@@ -58,6 +59,7 @@ def consultar_posto(
             conn.settimeout(p.TIMEOUT_POSTO_S)
             p.enviar_json(conn, {
                 "operacao": p.OP_CONSULTAR,
+                "estado": estado,
                 "combustivel": combustivel,
                 "cidade": cidade,
             })
@@ -74,21 +76,23 @@ def consultar_posto(
 # ---------- Estratégias ----------
 def consultar_sequencial(
     postos: list[PostoEndereco],
+    estado: str,
     combustivel: str,
     cidade: str,
 ) -> list[dict]:
-    return [consultar_posto(p_, combustivel, cidade) for p_ in postos]
+    return [consultar_posto(p_, estado, combustivel, cidade) for p_ in postos]
 
 
 def consultar_concorrente(
     postos: list[PostoEndereco],
+    estado: str,
     combustivel: str,
     cidade: str,
 ) -> list[dict]:
     resultados: list[dict] = []
     with ThreadPoolExecutor(max_workers=len(postos)) as pool:
         futures = {
-            pool.submit(consultar_posto, p_, combustivel, cidade): p_
+            pool.submit(consultar_posto, p_, estado, combustivel, cidade): p_
             for p_ in postos
         }
         for fut in as_completed(futures):
@@ -127,20 +131,26 @@ def tratar_cliente(conn: socket.socket, addr, postos: list[PostoEndereco]) -> No
             p.enviar_json(conn, {"status": p.STATUS_ERRO, "mensagem": erro or "estrategia obrigatória"})
             return
 
+        estado = p.normalizar_estado(req["estado"])
         combustivel = req["combustivel"]
         cidade = req["cidade"]
         estrategia = req["estrategia"]
 
         t0 = time.perf_counter()
         if estrategia == p.ESTRATEGIA_SEQUENCIAL:
-            brutas = consultar_sequencial(postos, combustivel, cidade)
+            brutas = consultar_sequencial(postos, estado, combustivel, cidade)
         else:
-            brutas = consultar_concorrente(postos, combustivel, cidade)
+            brutas = consultar_concorrente(postos, estado, combustivel, cidade)
         tempo_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         sucessos, indisponiveis, menor = consolidar(brutas)
         resposta = {
-            "consulta": {"combustivel": combustivel, "cidade": cidade, "estrategia": estrategia},
+            "consulta": {
+                "combustivel": combustivel,
+                "estado": estado,
+                "cidade": cidade,
+                "estrategia": estrategia,
+            },
             "resultados": sucessos,
             "indisponiveis": indisponiveis,
             "menor_preco": menor,
@@ -148,8 +158,8 @@ def tratar_cliente(conn: socket.socket, addr, postos: list[PostoEndereco]) -> No
         }
         p.enviar_json(conn, resposta)
         log.info(
-            "cliente=%s cidade=%s combustivel=%s estrategia=%s tempo_ms=%.1f sucessos=%d",
-            addr, cidade, combustivel, estrategia, tempo_ms, len(sucessos),
+            "cliente=%s estado=%s cidade=%s combustivel=%s estrategia=%s tempo_ms=%.1f sucessos=%d",
+            addr, estado, cidade, combustivel, estrategia, tempo_ms, len(sucessos),
         )
 
 

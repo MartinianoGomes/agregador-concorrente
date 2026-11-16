@@ -15,7 +15,7 @@ Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gle
 
 ## Documentação
 
-- Especificação de requisitos e modelagem UML: [Google Doc do grupo](https://claude.ai/artifact/T1jSLmcGik6xKXDqK5aL2B) (editável).
+- Especificação de requisitos e modelagem UML: [doc do grupo no Claude Docs](https://claude.ai/artifact/T1jSLmcGik6xKXDqK5aL2B) (editável).
 - Protocolo de aplicação (JSON sobre TCP): [`PROTOCOLO.md`](PROTOCOLO.md).
 - Guia de contribuição (branches, commits, PRs): [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -29,27 +29,32 @@ Trabalho 1 da disciplina **Sistemas Distribuídos** (UNIFESSPA/FACSI), Prof. Gle
 │   ├── agregador.py        # Servidor agregador (porta 5000)
 │   └── cliente.py          # Cliente CLI
 ├── scripts/
-│   ├── preparar_csvs.py    # Baixa o CSV da ANP e gera 4 recortes por rede
+│   ├── preparar_csvs.py    # Divide o CSV da ANP (baixado à mão) em 4 recortes, um por rede
 │   ├── run_all.sh          # Sobe postos + agregador em uma só execução (Linux/Mac)
 │   └── run_all.bat         # Idem para Windows
-├── data/                   # CSVs da ANP (gitignored, exceto .gitkeep e README)
-├── experimentos/           # Scripts dos 5 experimentos obrigatórios
-├── resultados/             # Saída bruta dos experimentos (gitignored)
-├── tests/                  # Testes básicos (pytest)
-└── docs/                   # Links e materiais auxiliares
+├── data/                   # CSVs da ANP (gitignored, exceto o README)
+├── experimentos/           # 5 experimentos obrigatórios + gráficos
+│   ├── _comum.py           # Sobe/derruba postos e agregador, estatísticas, gráficos
+│   ├── exp_1 … exp_5       # Um módulo por experimento
+│   ├── plot_comparativo.py # Gráficos 1 × 2
+│   ├── executar_todos.py   # Roda tudo em sequência
+│   └── regerar_graficos.py # Refaz os PNGs a partir dos JSONs
+├── resultados/             # Saída dos experimentos: JSON, PNG e logs (gitignored)
+├── tests/                  # Testes (pytest)
+└── docs/                   # Diagramas UML (PNG) e o script que os gera
 ```
 
 ## Requisitos
 
 - Python 3.10 ou superior
-- pip (para instalar `pandas`, opcional — se não quiser pandas, use `csv` da stdlib)
+- pip (a aplicação só usa a biblioteca padrão; `matplotlib` ≥ 3.9 é necessário para os gráficos e `pytest` para os testes)
 - Sistema operacional: Linux, macOS ou Windows
 
 ## Instalação
 
 ```bash
-git clone https://github.com/<organizacao-ou-usuario>/agregador-combustiveis-norte.git
-cd agregador-combustiveis-norte
+git clone https://github.com/MartinianoGomes/agregador-concorrente.git
+cd agregador-concorrente
 python -m venv .venv
 source .venv/bin/activate          # Linux/macOS
 .venv\Scripts\activate             # Windows
@@ -66,7 +71,7 @@ pip install -r requirements.txt
 python scripts/preparar_csvs.py --entrada data/anp_bruto.csv --saida data/
 ```
 
-O script gera `data/anp_posto_a.csv`, `data/anp_posto_b.csv`, `data/anp_posto_c.csv` e `data/anp_posto_d.csv`, cada um contendo um subconjunto distinto dos pontos de venda da Região Norte.
+O script gera `data/anp_posto_a.csv`, `data/anp_posto_b.csv`, `data/anp_posto_c.csv` e `data/anp_posto_d.csv`. Cada estabelecimento (CNPJ) vai para exatamente um recorte, escolhido pelo hash do CNPJ, então os 4 postos têm subconjuntos disjuntos dos pontos de venda da Região Norte.
 
 ## Rodar a aplicação
 
@@ -90,6 +95,12 @@ Os scripts sobem os 4 postos (portas 6001–6004) e o agregador (porta 5000) em 
 python -m src.cliente --host localhost --porta 5000
 ```
 
+O cliente pergunta, nesta ordem, o **estado** (UF da Região Norte: AC, AM, AP, PA, RO, RR, TO), o **município**, o combustível e a estratégia. Para uma consulta única, sem menus:
+
+```bash
+python -m src.cliente --estado PA --cidade Belém --combustivel gasolina_comum --estrategia concorrente
+```
+
 ## Rodar os experimentos
 
 Cada experimento **sobe e derruba sozinho** os 4 postos e o agregador (portas 7000–7004, para não colidir com o `run_all`). Basta ter os CSVs em `data/` e `matplotlib` instalado.
@@ -104,13 +115,13 @@ python -m experimentos.exp_5_indisponibilidade # cenários A, B e C com PASS/FAI
 python -m experimentos.executar_todos          # tudo em sequência
 ```
 
-Opções comuns: `--cidade`, `--combustivel` (padrão: Belém / gasolina_comum). Os exps. 1 e 2 aceitam `--externo` para usar o agregador do `run_all` (porta 5000).
+Opções comuns: `--estado`, `--cidade`, `--combustivel` (padrão: PA / Belém / gasolina_comum). Os exps. 1 e 2 aceitam `--externo` para usar o agregador do `run_all` (porta 5000).
 
 Saída em `resultados/`: JSON com os dados brutos e estatísticas, PNGs dos gráficos e `logs/` dos processos.
 
 ## Divisão de responsabilidades
 
-Ver a [issue inicial no GitHub](#) (a criar) ou a [proposta inicial no doc do grupo](https://claude.ai/artifact/T1jSLmcGik6xKXDqK5aL2B#divis%C3%A3o-de-atividades-6-integrantes).
+Ver a [proposta inicial no doc do grupo](https://claude.ai/artifact/T1jSLmcGik6xKXDqK5aL2B#divis%C3%A3o-de-atividades-6-integrantes).
 
 Resumo:
 
