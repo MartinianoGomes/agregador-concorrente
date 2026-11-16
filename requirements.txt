@@ -1,12 +1,10 @@
 # Dependências do projeto Agregador de Combustíveis
 # Python 3.10+
 
-# Leitura e processamento do CSV da ANP
-# (opcional — scripts/preparar_csvs.py também funciona com csv da stdlib)
-pandas>=2.0
+# O código da aplicação usa só a biblioteca padrão (csv, socket, threading).
 
-# Gráficos dos experimentos
-matplotlib>=3.8
+# Gráficos dos experimentos e diagramas (boxplot(tick_labels=...) exige 3.9+)
+matplotlib>=3.9
 
 # Testes
 pytest>=7.4

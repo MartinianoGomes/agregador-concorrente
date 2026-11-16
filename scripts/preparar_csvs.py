@@ -3,14 +3,13 @@
 Fluxo:
 1. Lê `data/anp_bruto.csv` (CSV da série histórica semanal da ANP).
 2. Filtra pelos estados da Região Norte (AC, AM, AP, PA, RO, RR, TO).
-3. Divide as linhas em 4 subconjuntos distintos (um por rede: A, B, C, D).
-4. Grava `data/anp_posto_a.csv`, `..._b.csv`, `..._c.csv`, `..._d.csv`.
+3. Divide as linhas em 4 subconjuntos disjuntos (um por rede: A, B, C, D),
+   pelo hash SHA-256 do CNPJ da revenda: um estabelecimento cai sempre no
+   mesmo posto e nunca aparece em dois recortes.
+4. Grava `data/anp_posto_a.csv`, `..._b.csv`, `..._c.csv`, `..._d.csv` (UTF-8).
 
-TODO (Gustavo): adaptar após verificar o layout real do CSV.
-  - Confirmar nome das colunas (podem variar entre semestres).
-  - Decidir o critério de particionamento: aleatório, por município, por
-    razão social (bandeira), etc.
-  - Validar que cada arquivo tenha pelo menos as 4 principais capitais.
+O CSV da ANP vem em UTF-8 com BOM; a leitura usa `utf-8-sig` para descartar o
+BOM sem corromper o cabeçalho nem os acentos.
 
 Uso:
     python scripts/preparar_csvs.py --entrada data/anp_bruto.csv --saida data/
@@ -24,6 +23,7 @@ import hashlib
 from pathlib import Path
 
 
+# Mantenha igual a `src.protocolo.ESTADOS` (o script roda isolado, sem importar `src`).
 ESTADOS_NORTE = {"AC", "AM", "AP", "PA", "RO", "RR", "TO"}
 
 
@@ -69,7 +69,7 @@ def main() -> None:
 
     args.saida.mkdir(parents=True, exist_ok=True)
 
-    with args.entrada.open(encoding="latin-1", newline="") as arquivo:
+    with args.entrada.open(encoding="utf-8-sig", newline="") as arquivo:
         reader = csv.DictReader(arquivo, delimiter=args.separador)
 
         colunas_originais = reader.fieldnames or []
