@@ -129,7 +129,8 @@ python -m pytest
 
 Os testes cobrem o protocolo (validação, normalização e rastreio), a leitura dos CSVs pelos postos, o particionamento por CNPJ, a lista de municípios da interface gráfica e a infraestrutura dos experimentos. Rodam em menos de um segundo e não precisam de servidores no ar nem do Tkinter.
 
-## Experimentos
+<details>
+<summary><h2>Experimentos</h2></summary>
 
 Os experimentos medem o desempenho das duas estratégias do agregador: **sequencial** (consulta um posto de cada vez) e **concorrente** (uma thread por posto, todas ao mesmo tempo).
 
@@ -228,3 +229,5 @@ Para refazer só os gráficos a partir dos JSONs já gravados, sem medir de novo
 ```bash
 python -m experimentos.regerar_graficos
 ```
+
+</details>
